@@ -116,58 +116,80 @@ function laserView(el: ElementState): ElementView {
   });
 }
 
-/** Rectangular mirror in a kinematic mount (two adjuster knobs behind). */
+/**
+ * Round mirror (silvered on both faces, like the physics) in a ring mount, held by a kinematic
+ * bracket with two adjuster knobs at the bottom.
+ */
 function mirrorView(el: ElementState): ElementView {
   const M = mats();
   const g = new THREE.Group();
-  const L = MIRROR_LENGTH;
-  const H = HALF_HEIGHT.mirror * 2;
-  g.add(mesh(new THREE.BoxGeometry(L, H, 0.035), M.mirror, 0, Y, 0));
-  // Frame: top and bottom rails, end caps.
-  g.add(mesh(new THREE.BoxGeometry(L + 0.06, 0.05, 0.09), M.anodized, 0, Y + H / 2 + 0.02, 0));
-  g.add(mesh(new THREE.BoxGeometry(L + 0.06, 0.05, 0.09), M.anodized, 0, Y - H / 2 - 0.02, 0));
-  for (const s of [-1, 1]) g.add(mesh(new THREE.BoxGeometry(0.04, H + 0.08, 0.09), M.anodized, (s * (L + 0.04)) / 2, Y, 0));
-  // Back plate strip with adjuster knobs.
-  g.add(mesh(new THREE.BoxGeometry(0.34, 0.34, 0.05), M.anodizedLight, 0, Y, -0.07));
-  g.add(knob(-0.12, Y + 0.12, -0.1), knob(0.12, Y + 0.12, -0.1));
-  g.add(post(Y - H / 2 - 0.04, indicatorColor(isMovable(el))));
+  const R = MIRROR_LENGTH / 2;
+  // Mirror disc: axis along local z (the mirror surface spans local x and height).
+  const disc = mesh(new THREE.CylinderGeometry(R, R, 0.03, 72), [M.anodizedLight, M.mirror, M.mirror] as unknown as THREE.Material, 0, Y, 0);
+  disc.rotation.x = Math.PI / 2;
+  g.add(disc);
+  // Ring mount around the edge.
+  const ringW = 0.06;
+  const depth = 0.08;
+  const ringGeo = new THREE.LatheGeometry([
+    new THREE.Vector2(R, -depth / 2), new THREE.Vector2(R + ringW, -depth / 2),
+    new THREE.Vector2(R + ringW, depth / 2), new THREE.Vector2(R, depth / 2), new THREE.Vector2(R, -depth / 2),
+  ], 72);
+  ringGeo.rotateX(Math.PI / 2); // lathe axis (y) → local z
+  g.add(mesh(ringGeo, M.anodized, 0, Y, 0));
+  // Kinematic bracket under the ring, with two knobs on its side.
+  const by = Y - R - ringW - 0.06;
+  g.add(mesh(new THREE.BoxGeometry(0.5, 0.12, 0.12), M.anodized, 0, by, 0));
+  g.add(mesh(new THREE.BoxGeometry(0.12, 0.08, 0.1), M.anodizedLight, 0, by + 0.09, 0));
+  g.add(knob(-0.17, by, -0.07), knob(0.17, by, -0.07));
+  g.add(post(by - 0.06, indicatorColor(isMovable(el))));
   return makeView(el, g);
 }
 
-/** Cube beam splitter: glass cube with a coated diagonal, in a cube mount. */
+/** Cube beam splitter: a glass cube with a shimmering coated diagonal, on a small cube mount. */
 function splitterView(el: ElementState, quality: Quality): ElementView {
   const M = mats();
   const g = new THREE.Group();
   const side = SPLITTER_LENGTH / Math.SQRT2;
-  const cube = new THREE.Mesh(new THREE.BoxGeometry(side, side, side), glassMaterial(quality, 1.5));
+  const glassMat = quality === 'low'
+    ? new THREE.MeshStandardMaterial({ color: '#bfefff', transparent: true, opacity: 0.25, roughness: 0.05, depthWrite: false })
+    : new THREE.MeshPhysicalMaterial({
+      color: '#e6f8ff', roughness: 0.02, transmission: 1, thickness: 0.4, ior: 1.5, transparent: true,
+      emissive: '#0c2633', envMapIntensity: 2,
+    });
+  const cube = new THREE.Mesh(new THREE.BoxGeometry(side, side, side), glassMat);
   cube.position.y = Y;
   cube.rotation.y = Math.PI / 4; // diagonal along local x = the splitter surface
   cube.renderOrder = 2;
+  // The coated diagonal (where the beam splits), drawn as a faint glowing violet sheet.
   const coating = new THREE.Mesh(
-    new THREE.PlaneGeometry(SPLITTER_LENGTH, side),
-    new THREE.MeshPhysicalMaterial({
-      color: '#e6c8ff', metalness: 0.7, roughness: 0.08, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-      iridescence: 1, iridescenceIOR: 1.6, depthWrite: false,
+    new THREE.PlaneGeometry(SPLITTER_LENGTH * 0.995, side * 0.995),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#c58cff').multiplyScalar(0.9), transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
     }),
   );
   coating.position.y = Y;
   coating.renderOrder = 3;
+  // Outline of the coated diagonal: shows as a violet diagonal across the top and bottom faces.
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(SPLITTER_LENGTH * 0.995, side * 0.995)),
+    new THREE.LineBasicMaterial({ color: new THREE.Color('#d9a6ff').multiplyScalar(1.6), toneMapped: false }),
+  );
+  outline.position.y = Y;
+  g.add(outline);
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(new THREE.BoxGeometry(side, side, side)),
-    new THREE.LineBasicMaterial({ color: '#a8eaff', transparent: true, opacity: 0.6 }),
+    new THREE.LineBasicMaterial({ color: new THREE.Color('#c8f4ff').multiplyScalar(1.3), transparent: true, opacity: 0.9, toneMapped: false }),
   );
   edges.position.y = Y;
   edges.rotation.y = Math.PI / 4;
-  // Cube mount: top clamp plate and bottom platform.
-  const top = mesh(new THREE.BoxGeometry(side + 0.06, 0.04, side + 0.06), M.anodized, 0, Y + side / 2 + 0.02, 0);
-  top.rotation.y = Math.PI / 4;
-  const bottom = mesh(new THREE.BoxGeometry(side + 0.08, 0.06, side + 0.08), M.anodized, 0, Y - side / 2 - 0.03, 0);
+  // Only a thin platform underneath (to sit on the post); the top stays open so it reads as plain glass.
+  const bottom = mesh(new THREE.BoxGeometry(side * 0.8, 0.04, side * 0.8), M.anodized, 0, Y - side / 2 - 0.02, 0);
   bottom.rotation.y = Math.PI / 4;
-  const screw = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.06, 12), M.steel, 0, Y + side / 2 + 0.06, 0);
-  g.add(cube, coating, edges, top, bottom, screw, post(Y - side / 2 - 0.06, indicatorColor(isMovable(el))));
+  g.add(cube, coating, edges, bottom, post(Y - side / 2 - 0.04, indicatorColor(isMovable(el))));
   return makeView(el, g);
 }
-
 /** Glass block or prism on a black platform. */
 function glassView(el: ElementState, quality: Quality): ElementView {
   const M = mats();

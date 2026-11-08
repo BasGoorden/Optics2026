@@ -289,7 +289,7 @@ export function buildOpticalScene(
 export function verticalExtent(el: ElementState): { hMin?: number; hMax?: number; disk?: number } {
   switch (el.kind) {
     case 'lens': return { disk: (el.len ?? LENS_LENGTH) / 2 };
-    case 'mirror': return { hMin: -HALF_HEIGHT.mirror, hMax: HALF_HEIGHT.mirror };
+    case 'mirror': return { disk: MIRROR_LENGTH / 2 };
     case 'splitter': return { hMin: -HALF_HEIGHT.splitter, hMax: HALF_HEIGHT.splitter };
     case 'block':
     case 'prism': return { hMin: -HALF_HEIGHT.glass, hMax: HALF_HEIGHT.glass };

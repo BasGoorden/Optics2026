@@ -144,15 +144,6 @@ export class Stage {
     board.position.set(cx, 0.002, cz);
     board.receiveShadow = true;
     this.tableGroup.add(board);
-    // Faint lines every whole unit help reading coordinates.
-    const pts: number[] = [];
-    for (let x = Math.ceil(b.minX); x <= b.maxX; x++) pts.push(x, 0.004, -b.minY, x, 0.004, -b.maxY);
-    for (let y = Math.ceil(b.minY); y <= b.maxY; y++) pts.push(b.minX, 0.004, -y, b.maxX, 0.004, -y);
-    const gridGeo = new THREE.BufferGeometry();
-    gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.tableGroup.add(new THREE.LineSegments(
-      gridGeo, new THREE.LineBasicMaterial({ color: '#2a7f9e', transparent: true, opacity: 0.16 }),
-    ));
 
     // Neon trim around the table edge.
     const trimMat = new THREE.MeshBasicMaterial({ color: PALETTE.cyan.clone().multiplyScalar(1.15), toneMapped: false });
