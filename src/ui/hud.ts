@@ -211,7 +211,11 @@ export class Hud {
     for (const p of ev.patterns) {
       const what = p.goal.spacing ? TEXT.stars.fringes : TEXT.stars.central;
       const now = Number.isFinite(p.value) ? p.value.toFixed(3) : '—';
-      rows.push(`${what(p.target.toFixed(2))} <small class="${p.ok ? 'ok' : ''}">now ${now}</small>`);
+      // Tell the player which way to go: the pattern grows with the slit-to-screen distance L.
+      let tip = '';
+      if (!Number.isFinite(p.value)) tip = TEXT.stars.noPattern;
+      else if (!p.ok) tip = p.value < p.target ? TEXT.stars.tooSmall : TEXT.stars.tooBig;
+      rows.push(`${what(p.target.toFixed(2))} <small class="${p.ok ? 'ok' : ''}">now ${now}${p.L !== undefined ? ` · L = ${p.L.toFixed(1)}` : ''}</small>${tip ? `<br><small class="tip">${tip}</small>` : ''}`);
     }
     for (const im of ev.images) {
       const blur = im.formed ? im.blur.toFixed(2) : '—';

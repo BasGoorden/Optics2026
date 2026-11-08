@@ -45,12 +45,12 @@ export const CHAPTER5: LevelDef[] = [
     title: 'Single Slit',
     intro: [
       'Even one slit makes a pattern: a wide bright band in the middle with fainter bands beside it.',
-      'Choose the right slit and place it so the central band is 1.04 wide (between the ticks).',
+      'Choose the right slit and place it in the beam so the central band is 1.04 wide (between the ticks). The further the slit is from the screen, the wider the pattern.',
     ],
     hints: [
       'Narrower slits spread the light out MORE. That\'s diffraction.',
       'Central band width W = 2·λ·L/a with λ = 650 nm. The 20 µm slit can\'t make it wide enough on this table.',
-      'Use the 10 µm slit, 8 units from the screen: at (−3.5, 0).',
+      'Use the 10 µm slit on the LEFT side, close to the laser: 8 units from the screen, at x = minus 3.5 (−3.5, 0).',
     ],
     explanation: {
       title: 'Diffraction',

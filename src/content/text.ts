@@ -47,6 +47,9 @@ export const TEXT = {
     colour: (want: string, only: boolean) => `Light the ${want}${only ? ' only' : ''} receiver`,
     fringes: (s: string) => `Make the fringe spacing ${s}`,
     central: (s: string) => `Make the central band ${s} wide`,
+    tooSmall: '↔ Too small: make the distance L between slits and screen bigger.',
+    tooBig: '↔ Too big: make the distance L between slits and screen smaller.',
+    noPattern: 'No pattern yet: the laser must go through the slit and reach the screen.',
     par: (n: number) => (n === 0 ? 'Solve it' : `Use at most ${n} element${n === 1 ? '' : 's'}`),
   },
   credits: [

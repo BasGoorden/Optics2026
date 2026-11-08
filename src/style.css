@@ -131,6 +131,7 @@ kbd {
 }
 .focal-label { font: 700 11px var(--title); color: var(--magenta); text-shadow: 0 0 6px rgba(255, 61, 242, 0.8); }
 .goal small.ok { color: var(--green); }
+.goal small.tip { color: var(--amber); display: inline-block; margin-top: 2px; }
 .physics-panel .lens-info { margin-bottom: 8px; }
 .axis-label { font: 600 11px 'Consolas', monospace; color: rgba(120, 200, 230, 0.55); }
 .phys-label {
