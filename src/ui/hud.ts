@@ -101,12 +101,20 @@ export class Hud {
       sec.appendChild(grid);
       this.menu.appendChild(sec);
     }
-    const help = el('div', 'controls-help');
+    // Controls list stays hidden until asked for.
+    const help = el('div', 'controls-help hidden');
     help.innerHTML = TEXT.controls.map(([k, v]) => `<div><kbd>${k}</kbd> ${v}</div>`).join('');
-    this.menu.appendChild(help);
+    const row = el('div', 'menu-buttons');
+    const controlsBtn = el('button', 'btn ghost', `⌨ ${TEXT.buttons.controls}`);
+    controlsBtn.addEventListener('click', () => {
+      audio.click();
+      const open = help.classList.toggle('hidden') === false;
+      controlsBtn.classList.toggle('active', open);
+    });
     const settingsBtn = el('button', 'btn ghost', `⚙ ${TEXT.buttons.settings}`);
     settingsBtn.addEventListener('click', () => this.toggleSettings());
-    this.menu.appendChild(settingsBtn);
+    row.append(controlsBtn, settingsBtn);
+    this.menu.append(row, help);
 
     this.menu.classList.remove('hidden');
     for (const e of [this.top, this.goals, this.tray, this.physics, this.selection]) e.classList.add('hidden');

@@ -28,6 +28,7 @@ export const TEXT = {
     sound: 'Sound',
     reset: 'Reset',
     settings: 'Settings',
+    controls: 'Controls',
     next: 'Next level',
     replay: 'Try for more stars',
     keep: 'Keep playing',
