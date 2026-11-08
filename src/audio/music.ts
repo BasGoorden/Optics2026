@@ -81,31 +81,43 @@ export class Music {
 
   constructor(ctx: AudioContext, dest: AudioNode) {
     this.ctx = ctx;
+    this.dest = dest;
     this.out = ctx.createGain();
-    this.out.gain.value = 0.16;
+    this.out.gain.value = 0;
     this.out.connect(dest);
     this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
 
+  private dest: AudioNode;
+
   play(id: TrackId): void {
     this.stop();
     if (id === 'off') return;
+    // Each track gets its own output bus, so the old track's notes can be faded out separately.
+    this.out = this.ctx.createGain();
+    this.out.connect(this.dest);
     this.style = STYLES[id];
     this.motifs = [];
     this.stepIndex = 0;
     this.nextTime = this.ctx.currentTime + 0.1;
-    this.out.gain.cancelScheduledValues(this.ctx.currentTime);
     this.out.gain.setValueAtTime(0, this.ctx.currentTime);
     this.out.gain.linearRampToValueAtTime(0.16, this.ctx.currentTime + 1.5);
     this.timer = window.setInterval(() => this.schedule(), 25);
   }
 
+  /** Stop scheduling and quickly fade out everything already playing (including long pad tails). */
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.style = null;
+    const old = this.out;
+    const now = this.ctx.currentTime;
+    old.gain.cancelScheduledValues(now);
+    old.gain.setValueAtTime(old.gain.value, now);
+    old.gain.linearRampToValueAtTime(0, now + 0.15);
+    window.setTimeout(() => old.disconnect(), 400);
   }
 
   private schedule(): void {

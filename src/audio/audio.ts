@@ -36,6 +36,12 @@ class AudioEngine {
     this.sfx.connect(this.master);
     this.music = new Music(ctx, this.master);
     this.music.play(this.track);
+    // Silence the game while its tab is hidden (stops background tabs from overlapping).
+    document.addEventListener('visibilitychange', () => {
+      if (!this.ctx) return;
+      if (document.hidden) void this.ctx.suspend();
+      else void this.ctx.resume();
+    });
   }
 
   private music: Music | null = null;
