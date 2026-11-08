@@ -123,6 +123,9 @@ kbd {
 .physics-panel code { display: block; font-family: 'Consolas', monospace; color: #bfefff; font-size: 13px; }
 .physics-panel .muted, .physics-panel p { color: var(--muted); margin: 8px 0 0; }
 
+.focal-label { font: 700 11px var(--title); color: var(--magenta); text-shadow: 0 0 6px rgba(255, 61, 242, 0.8); }
+.goal small.ok { color: var(--green); }
+.physics-panel .lens-info { margin-bottom: 8px; }
 .axis-label { font: 600 11px 'Consolas', monospace; color: rgba(120, 200, 230, 0.55); }
 .phys-label {
   font: 600 12px var(--body); color: #fff; padding: 3px 7px; border-radius: 6px; white-space: nowrap; text-align: center;

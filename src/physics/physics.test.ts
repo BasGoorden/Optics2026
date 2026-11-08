@@ -125,6 +125,78 @@ describe('tracer', () => {
     expect(r.hitTargets.has('T')).toBe(false);
   });
 
+  describe('thin lens', () => {
+    // Lens on the line x = 0 from y = −2 to 2, axis along +x, focal length f.
+    const lensScene = (f: number): OpticalScene => ({
+      bounds,
+      segments: [{ a: vec(0, -2), b: vec(0, 2), kind: 'lens', ownerId: 'L', normal: vec(1, 0), focal: f }],
+      circles: [],
+    });
+    /** Where the ray crosses the axis (y = 0) after the lens. */
+    const axisCrossing = (r: ReturnType<typeof traceScene>) => {
+      const s = r.segments[1];
+      const t = -s.from.y / (s.to.y - s.from.y);
+      return s.from.x + t * (s.to.x - s.from.x);
+    };
+
+    it('focuses parallel rays at the focal point', () => {
+      for (const h of [-1.5, -0.5, 0.3, 1.2]) {
+        const r = traceScene(lensScene(2), [src(-5, h, 0)]);
+        close(axisCrossing(r), 2, 1e-9);
+      }
+    });
+
+    it('images a point at the distance given by the lens equation', () => {
+      const f = 2;
+      const u = 5;
+      const v = (u * f) / (u - f); // 1/f = 1/u + 1/v
+      for (const deg of [-15, -5, 7, 18]) {
+        const r = traceScene(lensScene(f), [src(-u, 0, deg)]);
+        close(axisCrossing(r), v, 1e-9);
+      }
+    });
+
+    it('makes rays from the focal point parallel, and diverges with negative f', () => {
+      const r = traceScene(lensScene(2), [src(-2, 0, 20)]);
+      close(r.segments[1].to.y - r.segments[1].from.y, 0, 1e-9);
+      const d = traceScene(lensScene(-2), [src(-5, 1, 0)]);
+      // Diverging: a parallel ray leaves as if it came from the focal point at x = −2.
+      const s = d.segments[1];
+      const slope = (s.to.y - s.from.y) / (s.to.x - s.from.x);
+      close(slope, 1 / 2, 1e-9);
+    });
+
+    it('works for rays travelling the other way', () => {
+      const r = traceScene(lensScene(2), [src(5, 1, 180)]);
+      close(axisCrossing(r), -2, 1e-9);
+    });
+  });
+
+  it('adds up the power of many weak rays at a target', () => {
+    const scene: OpticalScene = {
+      bounds,
+      segments: [{ a: vec(0, -2), b: vec(0, 2), kind: 'lens', ownerId: 'L', normal: vec(1, 0), focal: 2 }],
+      circles: [{ c: vec(2, 0), r: 0.2, kind: 'target', ownerId: 'T', minPower: 0.9 }],
+    };
+    const fan = [-1, -0.5, 0, 0.5, 1].map((h) => ({ ...src(-5, h, 0), intensity: 0.2 }));
+    const r = traceScene(scene, fan);
+    close(r.power.get('T')!, 1, 1e-12);
+    expect(r.hitTargets.has('T')).toBe(true);
+    expect(traceScene(scene, fan.slice(0, 4)).hitTargets.has('T')).toBe(false); // only 80%
+  });
+
+  it('records where rays land on a screen', () => {
+    const scene: OpticalScene = {
+      bounds,
+      segments: [{ a: vec(5, -2), b: vec(5, 2), kind: 'screen', ownerId: 'S', normal: vec(-1, 0) }],
+      circles: [],
+    };
+    const r = traceScene(scene, [{ ...src(0, 0.5, 0), group: 'tip' }]);
+    expect(r.screenHits).toHaveLength(1);
+    close(r.screenHits[0].pos, 0.5);
+    expect(r.screenHits[0].group).toBe('tip');
+  });
+
   it('passes through sensors and records them', () => {
     const r = traceScene(
       { bounds, segments: [], circles: [{ c: vec(3, 0.1), r: 0.2, kind: 'sensor', ownerId: 'S' }] },

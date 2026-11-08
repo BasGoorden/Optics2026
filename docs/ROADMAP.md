@@ -40,12 +40,18 @@ Goal: a small part of the game that already looks and feels like the final game.
 - [ ] Variable splitters (e.g. 70/30) and receivers that need a minimum power
 
 ## Milestone 3 — Lenses & imaging (+ LEDs, apertures, objects, screens, cameras)
-- [ ] Thin lens elements (converging/diverging), focal point markers
-- [ ] Object/image visualisation (arrow object → image), lens equation overlay
-- [ ] Ray-fan sources: LEDs (spread of angles), illuminated objects (arrow/letter) as sets of point sources
-- [ ] Apertures / irises that clip ray fans
-- [ ] Screens that show where light lands; cameras (lens + sensor) that need a sharp image
-- [ ] Levels: focusing, telescopes, the eye and glasses, imaging an object onto a screen/camera
+- [x] Ideal thin lens elements (converging "Lens +", diverging "Lens −"), focal point markers (F)
+- [x] Ray-fan sources: LEDs (fan of rays), illuminated arrow object (3 coloured points: base/mid/tip)
+- [x] Receivers add up power from many rays (minPower); goals and bonus can require a power level
+- [x] Screens show coloured spots where rays land, plus the image arrow once it is sharp;
+      image analysis (blur = spot size containing 60% of each point's rays, magnification incl. sign)
+- [x] Apertures (pinhole plates)
+- [x] Physics panel: lens equation with u, v and m for the first lens
+- [x] Levels 3-1 Focus!, 3-2 Parallel Universe (collimation), 3-3 Pinhole Camera, 3-4 Picture Perfect (two lens positions)
+- [x] Levels split into one file per chapter (src/content/levels/)
+- [ ] More levels: magnifying glass / virtual images (diverging lens, object inside f), two-lens telescope,
+      the eye and glasses (fixed "retina" screen, add a correcting lens), camera (lens + sensor in one box, focus by moving)
+- [ ] Optional: lens rotation off-axis puzzles, iris (adjustable aperture) to trade brightness vs sharpness
 
 ## Milestone 4 — Colour & dispersion
 - [ ] Wavelength-coloured beams (renderer already colours by wavelength), white light splitting,

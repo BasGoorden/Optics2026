@@ -27,16 +27,17 @@ checkboxes up to date as work is finished. If a design decision changes, update 
 ## Code map
 - `src/physics/`: vec math, optics laws (`optics.ts`) and the 2D ray tracer (`trace.ts`)
 - `src/game/`: element geometry (`elements.ts`), level types/evaluation/stars (`level.ts`) and play state (`session.ts`)
-- `src/content/`: `levels.ts` (level geometry + all level text + known solutions) and `text.ts` (UI strings)
+- `src/content/levels/`: one file per chapter (geometry + all level text + known solutions), `index.ts` lists chapters. `src/content/text.ts`: UI strings
 - `src/render/`: `stage.ts` (renderer, bloom, lab, camera, quality), `elements.ts` (meshes), `beams.ts` (beams + overlay), `lumen.ts` (guide bot)
 - `src/ui/hud.ts`: all HTML UI. `src/audio/audio.ts`: synthesised WebAudio SFX. `src/audio/music.ts`: generative music tracks. `src/save/progress.ts`: localStorage (save key v2)
 - `src/app.ts`: game controller (input, selection, placement, completion)
 
 ## Conventions
 - Table coordinates: x right, y away from the player. World space = (x, height, -y). Rotation is in degrees, CCW.
-- Mirror rotation 0 means it lies along +x. Lasers fire along local +x.
+- Mirror/splitter rotation 0 means it lies along +x. Lasers/LEDs/objects emit along local +x. Lenses, screens and apertures stand across their local +x axis (rotation 0 = optical axis along +x).
+- Lenses are ideal thin lenses (slope change −h/f). Inventory items can differ from element kinds (`dlens` is a lens with f < 0); level `templates` set item properties.
 - Every level must include `solution` (2 stars) and `bonusSolution` (3 stars). `levels.test.ts` checks both.
-- Beams branch (splitters, Fresnel reflections). Receivers and rings only count beams with ≥ 10% intensity.
+- Beams branch (splitters, Fresnel reflections). Receivers and rings add up the power of all rays reaching them and need ≥ 10% by default (or the target's `minPower`).
 - Level ids are save keys: if you renumber levels, add a migration in `progress.ts`.
 - In dev builds, `window.opticsAudio` exposes the audio engine, and `window.optics` exposes the App for browser testing (`debugScreen(x, y)` gives the screen position of a table point).
 

@@ -1,10 +1,11 @@
 /** Game controller: ties together the session, 3D view, input, HUD and audio. */
 import * as THREE from 'three';
+import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { audio } from './audio/audio';
 import { TRACKS } from './audio/music';
 import { LEVELS } from './content/levels';
 import { TEXT } from './content/text';
-import { ElementState, PlaceableKind } from './game/elements';
+import { ElementState, LED_SIZE, PlaceableKind } from './game/elements';
 import { LevelSession } from './game/session';
 import { deg2rad } from './physics/vec';
 import { BeamRenderer } from './render/beams';
@@ -162,16 +163,22 @@ export class App {
   private clearLevel(): void {
     this.cancelPlacing();
     this.select(null);
-    for (const v of this.views.values()) this.stage.levelRoot.remove(v.group);
+    for (const v of this.views.values()) this.removeView(v);
     this.views.clear();
-    this.beams.show({ segments: [], interactions: [], hitTargets: new Set(), hitSensors: new Set() });
+    this.beams.show({ segments: [], interactions: [], hitTargets: new Set(), hitSensors: new Set(), power: new Map(), screenHits: [] });
     if (this.completionTimer) clearTimeout(this.completionTimer);
   }
 
   private rebuildViews(): void {
-    for (const v of this.views.values()) this.stage.levelRoot.remove(v.group);
+    for (const v of this.views.values()) this.removeView(v);
     this.views.clear();
     if (this.session) this.refresh(true);
+  }
+
+  /** Remove a view from the scene, including any HTML labels (CSS2D) inside it. */
+  private removeView(v: ElementView): void {
+    this.stage.levelRoot.remove(v.group);
+    v.group.traverse((o) => { if (o instanceof CSS2DObject) o.element.remove(); });
   }
 
   // ---------------- Refresh ----------------
@@ -182,7 +189,7 @@ export class App {
     if (!s) return;
     const ids = new Set(s.elements.map((e) => e.id));
     for (const [id, v] of this.views) {
-      if (!ids.has(id)) { this.stage.levelRoot.remove(v.group); this.views.delete(id); }
+      if (!ids.has(id)) { this.removeView(v); this.views.delete(id); }
     }
     for (const el of s.elements) {
       let v = this.views.get(el.id);
@@ -210,9 +217,14 @@ export class App {
     this.litTargets = lit;
     this.litRings = new Set(ev.trace.hitSensors);
 
-    this.hud.setGoals(s.level, ev);
+    this.hud.setGoals(s.level, ev, s.elements);
+    for (const el of s.elements) {
+      if (el.kind !== 'screen') continue;
+      const image = ev.images.find((i) => i.goal.screen === el.id);
+      this.views.get(el.id)?.showScreen?.(ev.trace.screenHits.filter((h) => h.ownerId === el.id), image);
+    }
     this.hud.setInventory(s.level, (k) => s.remaining(k), this.placingKind);
-    this.hud.setPhysics(this.beams.overlayOn, ev.trace.interactions);
+    this.hud.setPhysics(this.beams.overlayOn, ev.trace.interactions, this.lensInfo());
     this.updateSelectionUi();
     this.scheduleCompletionCheck();
   }
@@ -256,6 +268,7 @@ export class App {
     const name = TEXT.elementNames[el.kind];
     const parts = [`<b>${name}</b>`, `<span class="coords">(${el.x}, ${el.y})</span>`];
     if (el.rotatable) parts.push(`<span class="angle">${fmtDeg(el.rotation)}</span>`);
+    if (el.kind === 'lens') parts.push(`f = ${(el.focal ?? 2).toFixed(1)}` + ((el.focal ?? 2) > 0 ? ' (converging)' : ' (diverging)'));
     if (el.kind === 'block' || el.kind === 'prism') parts.push(`n = ${typeof el.index === 'number' ? el.index.toFixed(2) : '1.50'}`);
     const tips: string[] = [];
     if (el.movable) tips.push('drag to move (Shift: fine)');
@@ -288,7 +301,10 @@ export class App {
   }
 
   private cancelPlacing(): void {
-    if (this.ghost) this.stage.scene.remove(this.ghost.group);
+    if (this.ghost) {
+      this.stage.scene.remove(this.ghost.group);
+      this.ghost.group.traverse((o) => { if (o instanceof CSS2DObject) o.element.remove(); });
+    }
     this.ghost = null;
     if (this.placingKind && this.session) {
       this.placingKind = null;
@@ -491,6 +507,42 @@ export class App {
     this.downAt = null;
   }
 
+  /**
+   * Physics-panel summary for each lens: the lens equation for the first light source in front of it
+   * (an object or LED), with object distance u, image distance v and magnification m.
+   */
+  private lensInfo(): string {
+    const s = this.session;
+    if (!s) return '';
+    const lenses = s.elements.filter((e) => e.kind === 'lens');
+    if (!lenses.length) return '';
+    const src = s.elements.find((e) => e.kind === 'object' || e.kind === 'led');
+    const rows = lenses.map((L, i) => {
+      const f = L.focal ?? 2;
+      let eq = `<code>1/f = 1/u + 1/v</code>`;
+      if (src && i === 0) {
+        const axis = { x: Math.cos(deg2rad(L.rotation)), y: Math.sin(deg2rad(L.rotation)) };
+        // LEDs emit from the front of their housing, objects from their own position.
+        const off = src.kind === 'led' ? LED_SIZE / 2 + 0.02 : 0;
+        const sx = src.x + off * Math.cos(deg2rad(src.rotation));
+        const sy = src.y + off * Math.sin(deg2rad(src.rotation));
+        const u = Math.abs((L.x - sx) * axis.x + (L.y - sy) * axis.y);
+        if (u > 1e-6) {
+          const inv = 1 / f - 1 / u;
+          if (Math.abs(inv) < 1e-9) {
+            eq += `<code>u = ${u.toFixed(2)} = f → v = ∞ (parallel rays)</code>`;
+          } else {
+            const v = 1 / inv;
+            eq += `<code>1/${f.toFixed(2)} = 1/${u.toFixed(2)} + 1/v → v = ${v.toFixed(2)}</code>`;
+            eq += `<code>m = −v/u = ${(-v / u).toFixed(2)}${v < 0 ? ' (virtual image)' : ''}</code>`;
+          }
+        }
+      }
+      return `<li><b>Lens ${i + 1}: f = ${f.toFixed(2)}</b>${eq}</li>`;
+    });
+    return `<ol class="lens-info">${rows.join('')}</ol>`;
+  }
+
   /** Dev helper: screen position (CSS px) of a table point. */
   debugScreen(x: number, y: number): { x: number; y: number } {
     const v = new THREE.Vector3(x, 0, -y).project(this.stage.camera);
@@ -504,7 +556,7 @@ export class App {
     const on = !this.beams.overlayOn;
     this.beams.setOverlay(on);
     progress.updateSettings({ overlay: on });
-    if (this.session) this.hud.setPhysics(on, this.session.evaluation.trace.interactions);
+    if (this.session) this.hud.setPhysics(on, this.session.evaluation.trace.interactions, this.lensInfo());
     this.syncToggles();
   }
 

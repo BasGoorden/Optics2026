@@ -10,11 +10,15 @@ export const TEXT = {
   inventory: {
     mirror: 'Mirror',
     splitter: 'Splitter',
+    lens: 'Lens +',
+    dlens: 'Lens −',
+    aperture: 'Pinhole',
     block: 'Glass block',
     prism: 'Prism',
   } as Record<string, string>,
   elementNames: {
-    laser: 'Laser', mirror: 'Mirror', splitter: 'Beam splitter', block: 'Glass block', prism: 'Glass prism', target: 'Receiver', ring: 'Bonus ring', wall: 'Wall',
+    laser: 'Laser', mirror: 'Mirror', splitter: 'Beam splitter',
+    lens: 'Lens', led: 'LED', object: 'Object', screen: 'Screen', aperture: 'Pinhole plate', block: 'Glass block', prism: 'Glass prism', target: 'Receiver', ring: 'Bonus ring', wall: 'Wall',
   } as Record<string, string>,
   buttons: {
     levels: 'Levels',
@@ -33,6 +37,8 @@ export const TEXT = {
   stars: {
     solve: 'Light the receiver',
     solveAll: 'Light all receivers',
+    power: (p: string) => `Deliver ${p} of the light to the receiver`,
+    image: 'Form a sharp image on the screen',
     par: (n: number) => (n === 0 ? 'Solve it' : `Use at most ${n} element${n === 1 ? '' : 's'}`),
   },
   noMoreHints: 'That\'s all my hints. You\'ve got this!',

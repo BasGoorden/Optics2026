@@ -62,6 +62,23 @@ export class BeamRenderer {
       const q = new THREE.Quaternion().setFromUnitVectors(UP, b.clone().sub(a).normalize());
       // Inside glass the beam looks a little softer; weak beams are thinner and dimmer.
       const inGlass = s.n > 1.0001;
+      // Rays from fans (LEDs, objects) start weak, so draw them by their *relative* strength, a bit thinner.
+      const fanRay = s.rel > 0 && s.intensity / s.rel < 0.5;
+      if (fanRay) {
+        // Thin, additive, unbloomed lines: many overlapping fan rays add up to a soft glow instead of a white blob.
+        const line = new THREE.Mesh(
+          unitCylinder,
+          new THREE.MeshBasicMaterial({
+            color: color.clone().multiplyScalar(0.8 * Math.min(1, s.rel)), transparent: true, opacity: 0.9,
+            blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+          }),
+        );
+        line.scale.set(0.007, len, 0.007);
+        line.position.copy(mid);
+        line.quaternion.copy(q);
+        this.beams.add(line);
+        continue;
+      }
       const k = Math.sqrt(Math.min(1, s.intensity));
       const weak = s.intensity < 0.1;
       const core = new THREE.Mesh(
@@ -89,7 +106,7 @@ export class BeamRenderer {
     }
 
     for (const it of trace.interactions) {
-      if (it.type === 'escape' || it.intensity < 0.1) continue;
+      if (it.type === 'escape' || it.type === 'screen' || it.intensity < 0.1) continue;
       const color = it.type === 'absorb' ? new THREE.Color('#ff6040') : wavelengthToColor(trace.segments[0]?.wavelength ?? 532);
       const sp = new THREE.Sprite(
         new THREE.SpriteMaterial({
@@ -120,6 +137,7 @@ export class BeamRenderer {
     for (const it of trace.interactions) {
       if (!it.normal || it.intensity < 0.1) continue;
       if (it.type !== 'reflect' && it.type !== 'refract' && it.type !== 'tir' && it.type !== 'split') continue;
+      if (labelled >= 4) break;
       const p = new THREE.Vector3(it.point.x, BEAM_HEIGHT + 0.01, -it.point.y);
       const nrm = new THREE.Vector3(it.normal.x, 0, -it.normal.y);
       const g = new THREE.BufferGeometry().setFromPoints([

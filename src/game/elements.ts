@@ -8,10 +8,12 @@ import type { RefractiveIndex } from '../physics/optics';
 import type { BeamSource, Bounds, Circle, OpticalScene, Segment } from '../physics/trace';
 import { Vec2, add, deg2rad, fromAngle, normalize, perp, rotate, sub, vec } from '../physics/vec';
 
-export type ElementKind = 'laser' | 'mirror' | 'splitter' | 'block' | 'prism' | 'target' | 'ring' | 'wall';
+export type ElementKind =
+  | 'laser' | 'led' | 'object' | 'mirror' | 'splitter' | 'block' | 'prism' | 'lens' | 'aperture' | 'screen'
+  | 'target' | 'ring' | 'wall';
 
 /** Kinds the player can take from the inventory. */
-export type PlaceableKind = 'mirror' | 'splitter' | 'block' | 'prism';
+export type PlaceableKind = 'mirror' | 'splitter' | 'block' | 'prism' | 'lens' | 'dlens' | 'aperture';
 
 export interface ElementState {
   id: string;
@@ -26,6 +28,8 @@ export interface ElementState {
   rotatable?: boolean;
   /** Placed by the player from the inventory (can be removed again). */
   placed?: boolean;
+  /** Inventory item it came from, when that differs from kind (e.g. 'dlens' is a lens with f < 0). */
+  item?: PlaceableKind;
   /** Block/wall size. */
   w?: number;
   h?: number;
@@ -39,6 +43,17 @@ export interface ElementState {
   reflectance?: number;
   /** Target/ring radius. */
   r?: number;
+  /** Target: total power needed (fraction of one source; default 0.1). */
+  minPower?: number;
+  /** Lens: focal length (negative = diverging). */
+  focal?: number;
+  /** Lens/screen/aperture length, object height. */
+  len?: number;
+  /** Aperture: width of the opening. */
+  gap?: number;
+  /** LED/object: half-angle of the fan of rays (degrees) and number of rays per point. */
+  spread?: number;
+  rays?: number;
 }
 
 export const MIRROR_LENGTH = 1.2;
@@ -47,6 +62,22 @@ export const TARGET_RADIUS = 0.45;
 export const RING_RADIUS = 0.25;
 export const DEFAULT_GLASS_INDEX = 1.5;
 export const DEFAULT_WAVELENGTH = 532;
+export const LENS_LENGTH = 1.6;
+export const SCREEN_LENGTH = 2.4;
+export const OBJECT_HEIGHT = 1.2;
+export const LED_SIZE = 0.4;
+
+/**
+ * Object points that emit rays, from base to tip (fraction of the object height). Each point has its own
+ * colour (wavelength) so students can follow its rays and see whether the image is upside down.
+ */
+export const OBJECT_POINTS = [
+  { name: 'base', f: -0.5, wl: 470 },
+  { name: 'mid', f: 0, wl: 560 },
+  { name: 'tip', f: 0.5, wl: 640 },
+] as const;
+
+export const objectGroup = (objectId: string, point: string) => `${objectId}:${point}`;
 
 /** Right-angle prism (legs 1.2) with its centroid at the origin; right angle at top-left. */
 export const PRISM_LOCAL: Vec2[] = [vec(-0.4, -0.8), vec(0.8, 0.4), vec(-0.4, 0.4)];
@@ -72,6 +103,8 @@ export function elementPolygon(el: ElementState): Vec2[] | null {
       return PRISM_LOCAL.map((p) => toWorld(el, p));
     case 'laser':
       return rectLocal(LASER_SIZE.w, LASER_SIZE.h).map((p) => toWorld(el, p));
+    case 'led':
+      return rectLocal(LED_SIZE, LED_SIZE).map((p) => toWorld(el, p));
     default:
       return null;
   }
@@ -110,6 +143,41 @@ export function laserSource(el: ElementState): BeamSource {
   };
 }
 
+/**
+ * Ends of a plate-like element that stands across its own +x axis (lens, screen, aperture):
+ * rotation 0 = the element lies along y and its optical axis points along +x.
+ */
+export function plateEnds(el: ElementState, len: number): [Vec2, Vec2] {
+  const half = rotate(vec(0, len / 2), deg2rad(el.rotation));
+  return [sub(vec(el.x, el.y), half), add(vec(el.x, el.y), half)];
+}
+
+/** Fan of rays from point `p` around direction `rotation` (degrees). */
+function fan(
+  p: Vec2, rotation: number, spread: number, rays: number, total: number, el: ElementState, group?: string,
+): BeamSource[] {
+  const out: BeamSource[] = [];
+  for (let i = 0; i < rays; i++) {
+    const a = rays === 1 ? 0 : -spread + (2 * spread * i) / (rays - 1);
+    out.push({
+      origin: p, dir: fromAngle(deg2rad(rotation + a)), wavelength: el.wavelength ?? DEFAULT_WAVELENGTH,
+      intensity: total / rays, ownerId: el.id, group,
+    });
+  }
+  return out;
+}
+
+export function ledSources(el: ElementState): BeamSource[] {
+  return fan(toWorld(el, vec(LED_SIZE / 2 + 0.02, 0)), el.rotation, el.spread ?? 10, el.rays ?? 15, 1, el);
+}
+
+export function objectSources(el: ElementState): BeamSource[] {
+  const H = el.len ?? OBJECT_HEIGHT;
+  return OBJECT_POINTS.flatMap((pt) =>
+    fan(toWorld(el, vec(0, pt.f * H)), el.rotation, el.spread ?? 12, el.rays ?? 9, 1 / OBJECT_POINTS.length,
+      { ...el, wavelength: pt.wl }, objectGroup(el.id, pt.name)));
+}
+
 export function buildOpticalScene(
   elements: ElementState[], bounds: Bounds,
 ): { scene: OpticalScene; sources: BeamSource[] } {
@@ -135,6 +203,33 @@ export function buildOpticalScene(
         });
         break;
       }
+      case 'led':
+        sources.push(...ledSources(el));
+        segments.push(...polygonSegments(elementPolygon(el)!, 'absorber', el.id));
+        break;
+      case 'object':
+        sources.push(...objectSources(el));
+        break;
+      case 'lens': {
+        const [a, b] = plateEnds(el, el.len ?? LENS_LENGTH);
+        segments.push({ a, b, kind: 'lens', ownerId: el.id, normal: fromAngle(deg2rad(el.rotation)), focal: el.focal ?? 2 });
+        break;
+      }
+      case 'screen': {
+        const [a, b] = plateEnds(el, el.len ?? SCREEN_LENGTH);
+        segments.push({ a, b, kind: 'screen', ownerId: el.id, normal: fromAngle(deg2rad(el.rotation)) });
+        break;
+      }
+      case 'aperture': {
+        // A plate with an opening of width `gap` in the middle: two absorbing halves.
+        const len = el.len ?? SCREEN_LENGTH;
+        const g = (el.gap ?? 0.2) / 2;
+        const normal = fromAngle(deg2rad(el.rotation));
+        for (const [y0, y1] of [[-len / 2, -g], [g, len / 2]]) {
+          segments.push({ a: toWorld(el, vec(0, y0)), b: toWorld(el, vec(0, y1)), kind: 'absorber', ownerId: el.id, normal });
+        }
+        break;
+      }
       case 'wall':
         segments.push(...polygonSegments(elementPolygon(el)!, 'absorber', el.id));
         break;
@@ -145,7 +240,7 @@ export function buildOpticalScene(
         );
         break;
       case 'target':
-        circles.push({ c: vec(el.x, el.y), r: el.r ?? TARGET_RADIUS, kind: 'target', ownerId: el.id });
+        circles.push({ c: vec(el.x, el.y), r: el.r ?? TARGET_RADIUS, kind: 'target', ownerId: el.id, minPower: el.minPower });
         break;
       case 'ring':
         circles.push({ c: vec(el.x, el.y), r: el.r ?? RING_RADIUS, kind: 'sensor', ownerId: el.id });
@@ -166,5 +261,10 @@ export function footprint(el: ElementState): number {
     case 'target': return el.r ?? TARGET_RADIUS;
     case 'ring': return 0.2;
     case 'laser': return 0.45;
+    case 'led':
+    case 'object':
+    case 'lens':
+    case 'aperture':
+    case 'screen': return 0.3;
   }
 }

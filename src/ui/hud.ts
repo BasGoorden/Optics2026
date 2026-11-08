@@ -1,7 +1,7 @@
 /** HTML user interface on top of the 3D view. */
 import { CHAPTERS, LEVELS } from '../content/levels';
 import { TEXT } from '../content/text';
-import type { PlaceableKind } from '../game/elements';
+import type { ElementState, PlaceableKind } from '../game/elements';
 import type { Evaluation, LevelDef } from '../game/level';
 import { fresnelReflectance } from '../physics/optics';
 import type { Interaction } from '../physics/trace';
@@ -36,6 +36,9 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
 const ICONS: Record<string, string> = {
   mirror: '<svg viewBox="0 0 40 40"><line x1="8" y1="32" x2="32" y2="8" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><line x1="11" y1="35" x2="35" y2="11" stroke="currentColor" stroke-width="1.5" opacity=".5"/></svg>',
   splitter: '<svg viewBox="0 0 40 40"><line x1="10" y1="30" x2="30" y2="10" stroke="currentColor" stroke-width="3" stroke-dasharray="4 3" stroke-linecap="round"/><line x1="2" y1="20" x2="38" y2="20" stroke="currentColor" stroke-width="1.5" opacity=".6"/><line x1="20" y1="20" x2="20" y2="2" stroke="currentColor" stroke-width="1.5" opacity=".6"/></svg>',
+  lens: '<svg viewBox="0 0 40 40"><path d="M20 4 Q30 20 20 36 Q10 20 20 4Z" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
+  dlens: '<svg viewBox="0 0 40 40"><path d="M13 4 H27 Q20 20 27 36 H13 Q20 20 13 4Z" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
+  aperture: '<svg viewBox="0 0 40 40"><line x1="20" y1="3" x2="20" y2="16" stroke="currentColor" stroke-width="4"/><line x1="20" y1="24" x2="20" y2="37" stroke="currentColor" stroke-width="4"/><line x1="4" y1="20" x2="36" y2="20" stroke="currentColor" stroke-width="1.5" opacity=".6"/></svg>',
   prism: '<svg viewBox="0 0 40 40"><polygon points="8,32 8,8 32,8" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
   block: '<svg viewBox="0 0 40 40"><rect x="12" y="6" width="16" height="28" fill="none" stroke="currentColor" stroke-width="3" rx="2"/></svg>',
 };
@@ -159,11 +162,26 @@ export class Hud {
     this.top.querySelector('.track-name')!.textContent = TRACKS.find((x) => x.id === music)?.name ?? '';
   }
 
-  setGoals(level: LevelDef, ev: Evaluation): void {
+  setGoals(level: LevelDef, ev: Evaluation, elements: ElementState[]): void {
     const parOk = ev.placedCount <= level.par;
+    const pct = (x: number) => `${Math.round(x * 100)}%`;
+    const rows: string[] = [];
+    // Receivers that need a share of a fan's power show a power meter instead of a count.
+    const powered = elements.filter((e) => e.kind === 'target' && e.minPower !== undefined);
+    const plain = ev.requiredTargets.length - powered.length;
+    if (plain > 0) {
+      rows.push(`${plain > 1 ? TEXT.stars.solveAll : TEXT.stars.solve} <small>${ev.litTargets.filter((id) => !powered.some((p) => p.id === id)).length}/${plain}</small>`);
+    }
+    for (const t of powered) {
+      const p = ev.trace.power.get(t.id) ?? 0;
+      rows.push(`${TEXT.stars.power(pct(t.minPower!))} <small class="${p >= t.minPower! ? 'ok' : ''}">now ${pct(p)}</small>`);
+    }
+    for (const im of ev.images) {
+      const blur = im.formed ? im.blur.toFixed(2) : '—';
+      rows.push(`${TEXT.stars.image} <small class="${im.sharp ? 'ok' : ''}">blur ${blur} / max ${im.goal.maxBlur}${im.formed ? ` · m = ${im.magnification.toFixed(2)}` : ''}</small>`);
+    }
     this.goals.innerHTML = `
-      <div class="goal ${ev.solved ? 'met' : ''}">${star(ev.solved)} ${ev.requiredTargets.length > 1 ? TEXT.stars.solveAll : TEXT.stars.solve}
-        <small>${ev.litTargets.length}/${ev.requiredTargets.length}</small></div>
+      <div class="goal ${ev.solved ? 'met' : ''}">${star(ev.solved)} ${rows.join('<br>')}</div>
       <div class="goal ${ev.solved && parOk ? 'met' : ''} ${!parOk ? 'fail' : ''}">${star(ev.solved && parOk)} ${TEXT.stars.par(level.par)}</div>
       <div class="goal ${ev.bonusMet ? 'met' : ''}">${star(ev.solved && ev.bonusMet)} ${level.bonus.description}</div>`;
   }
@@ -191,7 +209,7 @@ export class Hud {
     if (text) this.selection.innerHTML = text;
   }
 
-  setPhysics(on: boolean, interactions: Interaction[]): void {
+  setPhysics(on: boolean, interactions: Interaction[], extra = ''): void {
     this.physics.classList.toggle('hidden', !on);
     if (!on) return;
     const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -220,7 +238,8 @@ export class Hud {
       }, [])
       .slice(0, 8)
       .map((r) => `<li><b>${r.count > 1 ? `#${r.first}–${r.first + r.count - 1}` : `#${r.first}`} ${r.title}${r.count > 1 ? ` ×${r.count}` : ''}</b>${r.body}</li>`);
-    this.physics.innerHTML = `<h3>Physics overlay</h3>${rows.length ? `<ol>${rows.join('')}</ol>` : '<p>No surfaces hit yet. Put something in the beam!</p>'}<p class="muted">Angles are measured from the normal (dashed line).</p>`;
+    const body = rows.length ? `<ol>${rows.join('')}</ol>` : extra ? '' : '<p>No surfaces hit yet. Put something in the beam!</p>';
+    this.physics.innerHTML = `<h3>Physics overlay</h3>${extra}${body}${rows.length ? '<p class="muted">Angles are measured from the normal (dashed line).</p>' : ''}`;
   }
 
   // ---------- Lumen ----------

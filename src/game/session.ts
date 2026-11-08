@@ -1,6 +1,6 @@
 /** State of the level being played: elements, inventory and evaluation. Pure TypeScript. */
 import { ElementState, PlaceableKind } from './elements';
-import { Evaluation, LevelDef, canPlaceAt, evaluate } from './level';
+import { Evaluation, LevelDef, canPlaceAt, evaluate, itemOf, makeItem } from './level';
 
 let nextId = 1;
 
@@ -24,7 +24,7 @@ export class LevelSession {
   }
 
   remaining(kind: PlaceableKind): number {
-    const used = this.elements.filter((e) => e.placed && e.kind === kind).length;
+    const used = this.elements.filter((e) => e.placed && itemOf(e) === kind).length;
     return (this.level.inventory[kind] ?? 0) - used;
   }
 
@@ -34,14 +34,11 @@ export class LevelSession {
 
   /** Default size/rotation for a newly placed element. */
   template(kind: PlaceableKind): ElementState {
-    return {
-      id: `p${nextId++}`, kind, x: 0, y: 0, rotation: 0, movable: true, rotatable: true, placed: true,
-      ...(kind === 'block' ? { w: 1, h: 2, index: 1.5 } : {}),
-    };
+    return makeItem(this.level, kind, `p${nextId++}`);
   }
 
   place(el: ElementState): boolean {
-    if (this.remaining(el.kind as PlaceableKind) <= 0 || !this.canPlace(el, el.x, el.y)) return false;
+    if (this.remaining(itemOf(el)) <= 0 || !this.canPlace(el, el.x, el.y)) return false;
     this.elements.push(el);
     this.reevaluate();
     return true;

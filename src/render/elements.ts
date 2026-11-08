@@ -5,7 +5,10 @@ import * as THREE from 'three';
 import {
   ElementState, LASER_SIZE, MIRROR_LENGTH, PRISM_LOCAL, RING_RADIUS, SPLITTER_LENGTH, TARGET_RADIUS,
 } from '../game/elements';
+import type { ImageResult } from '../game/level';
+import type { ScreenHit } from '../physics/trace';
 import { deg2rad } from '../physics/vec';
+import { buildAperture, buildLed, buildLens, buildObject, buildScreen } from './imaging';
 import { BEAM_HEIGHT, PALETTE, wavelengthToColor } from './color';
 import type { Quality } from './stage';
 
@@ -17,6 +20,8 @@ export interface ElementView {
   setHover(on: boolean): void;
   /** For targets and rings: lit by the beam. */
   setLit?(on: boolean): void;
+  /** For screens: show where rays land, and the image if it is sharp. */
+  showScreen?(hits: ScreenHit[], image?: ImageResult): void;
   update?(t: number, dt: number): void;
 }
 
@@ -275,6 +280,14 @@ export function createElementView(el: ElementState, quality: Quality): ElementVi
     case 'laser': return laserView(el);
     case 'mirror': return mirrorView(el);
     case 'splitter': return splitterView(el);
+    case 'lens': return makeView(el, buildLens(el, quality));
+    case 'led': return makeView(el, buildLed(el));
+    case 'object': return makeView(el, buildObject(el));
+    case 'aperture': return makeView(el, buildAperture(el));
+    case 'screen': {
+      const s = buildScreen(el);
+      return makeView(el, s.group, { showScreen: s.show });
+    }
     case 'block':
     case 'prism': return glassView(el, quality);
     case 'wall': return wallView(el);
