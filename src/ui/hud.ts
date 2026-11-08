@@ -129,7 +129,9 @@ export class Hud {
     settingsBtn.addEventListener('click', () => this.toggleSettings());
     const creditsBtn = el('button', 'btn ghost', `✦ ${TEXT.buttons.credits}`);
     creditsBtn.addEventListener('click', () => { audio.click(); this.showCredits(); });
-    row.append(controlsBtn, settingsBtn, creditsBtn);
+    const madeBtn = el('button', 'btn ghost', `▶ ${TEXT.buttons.howMade}`);
+    madeBtn.addEventListener('click', () => { audio.click(); this.showHowMade(); });
+    row.append(controlsBtn, settingsBtn, creditsBtn, madeBtn);
     this.menu.append(row, help);
 
     this.menu.classList.remove('hidden');
@@ -385,6 +387,13 @@ export class Hud {
   }
 
   hideModal(): void {
+    const video = this.modal.querySelector('video');
+    if (video) {
+      // Stop the "How it was made" video and bring the game's own sound back.
+      video.pause();
+      this.modal.innerHTML = '';
+      audio.setMuted(this.getSettings().muted);
+    }
     this.modal.classList.add('hidden');
   }
 
@@ -399,10 +408,28 @@ export class Hud {
       <div class="modal credits">
         <h2>${TEXT.gameTitle}</h2>
         ${TEXT.credits.map((line) => `<p>${line}</p>`).join('')}
+        <div class="modal-actions">
+          <button class="btn ghost" data-a="video">▶ ${TEXT.howMade.watch}</button>
+          <button class="btn primary" data-a="close">${TEXT.buttons.close}</button>
+        </div>
+      </div>`;
+    this.modal.classList.remove('hidden');
+    this.modal.querySelector('[data-a="video"]')!.addEventListener('click', () => { audio.click(); this.showHowMade(); });
+    this.modal.querySelector('[data-a="close"]')!.addEventListener('click', () => { audio.click(); this.hideModal(); });
+  }
+
+  /** The "How it was made" video (public/video/), with the game's music paused while it plays. */
+  private showHowMade(): void {
+    this.modal.innerHTML = `
+      <div class="modal video">
+        <h2>${TEXT.howMade.title}</h2>
+        <p>${TEXT.howMade.intro}</p>
+        <video controls preload="metadata" playsinline poster="video/how-its-made.jpg" src="video/how-its-made.mp4"></video>
         <div class="modal-actions"><button class="btn primary" data-a="close">${TEXT.buttons.close}</button></div>
       </div>`;
     this.modal.classList.remove('hidden');
-    this.modal.querySelector('button')!.addEventListener('click', () => { audio.click(); this.hideModal(); });
+    audio.setMuted(true);
+    this.modal.querySelector('[data-a="close"]')!.addEventListener('click', () => { audio.click(); this.hideModal(); });
   }
 
   /** Larger interface text, for classroom projectors. */

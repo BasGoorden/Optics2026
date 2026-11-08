@@ -171,6 +171,8 @@ kbd {
 .menu-buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .chapter h2 small { font: 400 13px var(--body); color: var(--muted); margin-left: 8px; letter-spacing: 0; }
 .modal.credits p { color: var(--text); }
+.modal.video { width: min(1100px, 100%); }
+.modal.video video { display: block; width: 100%; aspect-ratio: 16 / 9; margin: 6px 0 4px; border-radius: 12px; background: #000; border: 1px solid var(--panel-border); }
 /* Large text for projectors. */
 .hud.large { zoom: 1.25; }
 .controls-help {

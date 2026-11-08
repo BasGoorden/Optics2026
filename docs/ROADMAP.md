@@ -70,6 +70,7 @@ Goal: a small part of the game that already looks and feels like the final game.
 ## Milestone 6 — Release
 - [x] Credits, large-text option for projectors, chapter subtitles, colour receivers labelled with colour names
       and "lit/dark" text (not colour alone)
+- [x] "How it was made" video (start menu button + Credits), in `public/video/`; made with Remotion in a separate local folder (`Optics2026-video`)
 - [ ] Real playtest with students; performance check on a weak laptop and on a projector
 - [ ] Hosting: needs a decision. GitHub Pages from a *private* repo needs a paid GitHub plan;
       alternatives: make the repo public, or Netlify/Cloudflare Pages
