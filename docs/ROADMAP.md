@@ -5,7 +5,7 @@ Status markers: `[ ]` todo, `[~]` in progress, `[x]` done.
 ## Milestone 0 — Project setup
 - [x] Create folder + git repo, design docs
 - [ ] Vite + TypeScript + Three.js scaffold, ESLint/Prettier, Vitest
-- [ ] Private GitHub repo `BasGoorden/Optics2026`, push
+- [x] Private GitHub repo `BasGoorden/Optics2026`, push
 
 ## Milestone 1 — Polished vertical slice (≈5 levels)
 Goal: a small part of the game that already looks and feels like the final game.
