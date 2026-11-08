@@ -30,6 +30,8 @@ export interface Segment {
   hMax?: number;
   /** Round aperture radius (lenses), used only by the 3D tracer. */
   disk?: number;
+  /** For 'interface': anti-reflection coated (no Fresnel reflection), like the faces of a cube beam splitter. */
+  ar?: boolean;
 }
 
 export interface Circle {
@@ -99,6 +101,8 @@ export interface Interaction {
   /** Lens: height where the ray crosses the lens (from its centre), and the focal length. */
   h?: number;
   focal?: number;
+  /** Refraction at an anti-reflection coated surface. */
+  ar?: boolean;
 }
 
 /** Where a ray lands on a screen. */
@@ -340,13 +344,13 @@ export function traceScene(
           d = reflect(d, facing);
           result.interactions.push({ type: 'tir', ...base, thetaT: thetaI, n1, n2 });
         } else {
-          if (fresnel) {
+          if (fresnel && !s.ar) {
             const R = fresnelReflectance(cosI, n1, n2);
             spawn({ o: p, d: reflect(d, facing), n: n1, intensity: intensity * R, lastSeg: bestSeg, depth: step + 1 });
             intensity *= 1 - R;
           }
           result.interactions.push({
-            type: 'refract', ...base, thetaT: Math.acos(Math.min(1, -dot(t, facing))), n1, n2,
+            type: 'refract', ...base, thetaT: Math.acos(Math.min(1, -dot(t, facing))), n1, n2, ar: s.ar,
           });
           d = t;
           n = n2;

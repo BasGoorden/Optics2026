@@ -229,7 +229,12 @@ export function buildOpticalScene(
         break;
       }
       case 'splitter': {
+        // Cube beam splitter: a glass cube (anti-reflection coated faces) with the
+        // half-reflecting layer on its diagonal. The diagonal lies along local x.
         const [a, b] = mirrorEnds(el);
+        const h = SPLITTER_LENGTH / 2;
+        const cube = [vec(-h, 0), vec(0, -h), vec(h, 0), vec(0, h)].map((p) => toWorld(el, p));
+        segments.push(...polygonSegments(cube, 'interface', el.id, el.index ?? DEFAULT_GLASS_INDEX).map((s) => ({ ...s, ar: true })));
         segments.push({
           a, b, kind: 'splitter', ownerId: el.id, normal: normalize(perp(sub(b, a))), reflectance: el.reflectance ?? 0.5,
         });

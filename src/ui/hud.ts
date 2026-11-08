@@ -235,7 +235,7 @@ export class Hud {
           const c = Math.asin((it.n2 ?? 1) / (it.n1 ?? 1.5));
           return ['Total internal reflection', `<code>sin θc = ${it.n2?.toFixed(2)} / ${it.n1?.toFixed(2)} → θc = ${deg(c)}</code><code>θ = ${deg(it.thetaI)} &gt; θc: all light reflects</code>`];
         }
-        return [`Refraction <small>(${pct(fresnelR(it))} reflected)</small>`, `<code>${it.n1?.toFixed(2)} · sin ${deg(it.thetaI)} = ${it.n2?.toFixed(2)} · sin ${deg(it.thetaT)}</code><code>${((it.n1 ?? 1) * Math.sin(it.thetaI ?? 0)).toFixed(3)} = ${((it.n2 ?? 1) * Math.sin(it.thetaT ?? 0)).toFixed(3)}</code>`];
+        return [`Refraction <small>(${it.ar ? 'AR coated: no reflection' : `${pct(fresnelR(it))} reflected`})</small>`, `<code>${it.n1?.toFixed(2)} · sin ${deg(it.thetaI)} = ${it.n2?.toFixed(2)} · sin ${deg(it.thetaT)}</code><code>${((it.n1 ?? 1) * Math.sin(it.thetaI ?? 0)).toFixed(3)} = ${((it.n2 ?? 1) * Math.sin(it.thetaT ?? 0)).toFixed(3)}</code>`];
       })
       // Merge identical consecutive steps (e.g. many bounces inside a fibre).
       .reduce<{ title: string; body: string; count: number; first: number }[]>((acc, [title, body], i) => {

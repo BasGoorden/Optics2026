@@ -127,7 +127,7 @@ export const CHAPTER1: LevelDef[] = [
     title: 'Split Decision',
     intro: [
       'Two receivers, one laser. Time for a new tool: the beam splitter.',
-      'It\'s a half-silvered glass plate. Half of the light reflects like a mirror, the other half goes straight through.',
+      'It\'s a glass cube with a half-reflecting layer along its diagonal. Half of the light reflects like a mirror, the other half goes straight through.',
     ],
     hints: [
       'One receiver is straight ahead. The other one needs the reflected half of the beam.',
@@ -140,7 +140,8 @@ export const CHAPTER1: LevelDef[] = [
         'A beam splitter divides one beam into two: here 50% is reflected and 50% transmitted. The reflected part '
         + 'follows the law of reflection, and the transmitted part carries on in a straight line. Energy is conserved: 50% + 50% = 100%.',
       deeper:
-        'Real splitters use a thin metal or dielectric coating whose reflectance R sets the split: I_r = R·I and I_t = (1 − R)·I. '
+        'The diagonal carries a thin metal or dielectric coating whose reflectance R sets the split: I_r = R·I and I_t = (1 − R)·I. '
+        + 'The cube faces are anti-reflection coated, and light that enters them at an angle refracts like in any glass block: the beams shift sideways a little. '
         + 'Interferometers, such as the ones that detected gravitational waves, start with a beam splitter.',
     },
     bounds: TABLE,
