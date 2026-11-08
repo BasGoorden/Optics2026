@@ -16,73 +16,69 @@ import type { Quality } from './stage';
 const Y = BEAM_HEIGHT;
 const movable = (el: ElementState) => !!el.movable || !!el.placed;
 
-function extrude(points: { x: number; y: number }[], height: number): THREE.ExtrudeGeometry {
-  const shape = new THREE.Shape(points.map((p) => new THREE.Vector2(p.x, p.y)));
-  const g = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false, curveSegments: 4 });
-  g.rotateX(-Math.PI / 2);
-  return g;
+/** Half-thickness of a lens at distance r from its centre (stronger lenses look more curved). */
+function lensHalfThickness(r: number, R: number, focal: number): number {
+  const thick = 0.13;
+  const edge = 0.025;
+  const k = Math.min(1.5, 2 / Math.max(0.8, Math.abs(focal)));
+  const u = r / R;
+  return focal > 0 ? edge + (thick - edge) * k * (1 - u * u) * 0.8 + 0.005 : edge + (thick - edge) * k * u * u * 0.8;
 }
 
-/** Outline of a (cylindrical) thin lens in local coordinates (axis = +x, lens along y). */
-export function lensOutline(len: number, focal: number): { x: number; y: number }[] {
-  const n = 16;
-  const pts: { x: number; y: number }[] = [];
-  const thick = 0.22;
-  const edge = 0.05;
-  // Stronger lenses (small |f|) look more curved.
-  const k = Math.min(1.4, 2 / Math.max(0.8, Math.abs(focal)));
-  const half = (y: number) => {
-    const u = (2 * y) / len;
-    return focal > 0 ? edge + (thick - edge) * k * (1 - u * u) * 0.8 + 0.01 : edge + (thick - edge) * k * u * u * 0.8;
-  };
-  for (let i = 0; i <= n; i++) {
-    const y = -len / 2 + (len * i) / n;
-    pts.push({ x: half(y), y });
-  }
-  for (let i = n; i >= 0; i--) {
-    const y = -len / 2 + (len * i) / n;
-    pts.push({ x: -half(y), y });
-  }
-  return pts;
-}
-
-/** Cylindrical lens in a rectangular lens mount, with its focal points marked on the table. */
+/** Round lens (biconvex or biconcave) in a round lens mount on a post. */
 export function buildLens(el: ElementState, quality: Quality): THREE.Group {
   const M = mats();
   const g = new THREE.Group();
-  const len = el.len ?? LENS_LENGTH;
+  const R = (el.len ?? LENS_LENGTH) / 2;
   const f = el.focal ?? 2;
-  const H = 0.52;
-  const geo = extrude(lensOutline(len, f), H);
+  // Lathe profile (radius, axial position), turned around the lens axis.
+  const n = 20;
+  const prof: THREE.Vector2[] = [];
+  for (let i = 0; i <= n; i++) prof.push(new THREE.Vector2((R * i) / n, -lensHalfThickness((R * i) / n, R, f)));
+  for (let i = n; i >= 0; i--) prof.push(new THREE.Vector2((R * i) / n, lensHalfThickness((R * i) / n, R, f)));
+  const geo = new THREE.LatheGeometry(prof, 64);
+  geo.rotateZ(-Math.PI / 2); // lathe axis (y) → local x = optical axis
   const mat = quality === 'low'
     ? new THREE.MeshStandardMaterial({ color: '#9feaff', transparent: true, opacity: 0.3, roughness: 0.05, depthWrite: false })
     : new THREE.MeshPhysicalMaterial({
-      color: '#e2f8ff', roughness: 0.02, transmission: 1, thickness: 0.3, ior: 1.5, transparent: true, envMapIntensity: 1.8,
+      color: '#e8faff', roughness: 0.02, transmission: 1, thickness: 0.25, ior: 1.5, transparent: true, envMapIntensity: 2,
+      side: THREE.DoubleSide,
     });
   const glass = new THREE.Mesh(geo, mat);
-  glass.position.y = Y - H / 2;
+  glass.position.y = Y;
   glass.renderOrder = 2;
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geo, 30),
-    new THREE.LineBasicMaterial({ color: new THREE.Color('#bff2ff').multiplyScalar(1.3), transparent: true, opacity: 0.9, toneMapped: false }),
+  g.add(glass);
+  // Subtle bright rim so the lens edge reads well against the dark lab.
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(R, 0.008, 6, 64),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color('#bff2ff').multiplyScalar(1.2), toneMapped: false, transparent: true, opacity: 0.8 }),
   );
-  edges.position.y = Y - H / 2;
-  g.add(glass, edges);
-  // Mount: top and bottom rails along the lens, side clamps with screws.
-  // Slim mount: a bottom rail and two side clamps, so the glass stays visible.
-  g.add(mesh(new THREE.BoxGeometry(0.08, 0.05, len + 0.12), M.anodized, 0, Y - H / 2 - 0.025, 0));
-  for (const s of [-1, 1]) {
-    g.add(mesh(new THREE.BoxGeometry(0.1, H + 0.12, 0.06), M.anodized, 0, Y + 0.01, -s * (len / 2 + 0.03)));
-    g.add(mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.05, 10), M.steel, 0, Y + H / 2 + 0.09, -s * (len / 2 + 0.03)));
-  }
-  // + or − tag on the side clamp.
-  for (const s of [-1, 1]) {
-    const tag = new THREE.Mesh(new THREE.BoxGeometry(0.102, 0.06, 0.062), glow(f > 0 ? PALETTE.cyan : PALETTE.magenta, 1.4));
-    tag.position.set(0, Y + H / 2 - 0.02, -s * (len / 2 + 0.03));
-    g.add(tag);
-  }
-  g.add(post(Y - H / 2 - 0.05, indicatorColor(movable(el))));
+  rim.rotation.y = Math.PI / 2;
+  rim.position.y = Y;
+  g.add(rim);
 
+  // Round lens mount: an anodised ring around the edge, with a steel retaining ring and a top screw.
+  const ringW = 0.09;
+  const depth = 0.16;
+  const ringProfile = [
+    new THREE.Vector2(R, -depth / 2), new THREE.Vector2(R + ringW, -depth / 2),
+    new THREE.Vector2(R + ringW, depth / 2), new THREE.Vector2(R, depth / 2), new THREE.Vector2(R, -depth / 2),
+  ];
+  const ringGeo = new THREE.LatheGeometry(ringProfile, 64);
+  ringGeo.rotateZ(-Math.PI / 2);
+  g.add(mesh(ringGeo, M.anodized, 0, Y, 0));
+  const retain = new THREE.Mesh(new THREE.TorusGeometry(R + 0.02, 0.012, 6, 64), M.steel);
+  retain.rotation.y = Math.PI / 2;
+  retain.position.set(depth / 2 + 0.005, Y, 0);
+  g.add(retain);
+  g.add(mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.08, 10), M.steel, 0, Y + R + ringW + 0.03, 0));
+  // + or − tag on top of the ring.
+  const tag = new THREE.Mesh(new THREE.BoxGeometry(depth + 0.01, 0.02, 0.12), glow(f > 0 ? PALETTE.cyan : PALETTE.magenta, 1.4));
+  tag.position.set(0, Y + R + ringW + 0.005, -0.12);
+  g.add(tag);
+  // Stub that joins the ring to the post.
+  g.add(mesh(new THREE.BoxGeometry(depth, 0.08, 0.16), M.anodized, 0, Y - R - ringW - 0.03, 0));
+  g.add(post(Y - R - ringW - 0.07, indicatorColor(movable(el))));
   // Focal points F on both sides of the lens (on the table, along the axis).
   for (const s of [-1, 1]) {
     const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.06), glow(PALETTE.magenta, 1.8));

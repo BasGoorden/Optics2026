@@ -8,7 +8,7 @@ export class LumenBot {
   private ringMat: THREE.MeshBasicMaterial;
   private ring: THREE.Mesh;
   private talking = 0;
-  private home = new THREE.Vector3(-6.2, 1.5, -5.2);
+  private home = new THREE.Vector3(-6.2, 2.3, -5.2);
 
   constructor() {
     const shell = new THREE.Mesh(

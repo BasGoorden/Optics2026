@@ -35,6 +35,10 @@ checkboxes up to date as work is finished. If a design decision changes, update 
 ## Conventions
 - Table coordinates: x right, y away from the player. World space = (x, height, -y). Rotation is in degrees, CCW.
 - Mirror/splitter rotation 0 means it lies along +x. Lasers/LEDs/objects emit along local +x. Lenses, screens and apertures stand across their local +x axis (rotation 0 = optical axis along +x).
+- Scoring uses the 2D tracer (`trace.ts`) in the plane of the optical axis (`AXIS_HEIGHT` above the table).
+  LEDs and objects are also drawn as 3D cones of rays by `trace3d.ts` (drawing only). It turns every 2D surface
+  into a vertical surface using `verticalExtent()` (lenses become round discs), so in-plane rays match the 2D tracer exactly (tested).
+  Keep the model heights in `render/` in sync with `HALF_HEIGHT` in `game/elements.ts`.
 - Lenses are ideal thin lenses (slope change −h/f). Inventory items can differ from element kinds (`dlens` is a lens with f < 0); level `templates` set item properties.
 - Every level must include `solution` (2 stars) and `bonusSolution` (3 stars). `levels.test.ts` checks both.
 - Beams branch (splitters, Fresnel reflections). Receivers and rings add up the power of all rays reaching them and need ≥ 10% by default (or the target's `minPower`).

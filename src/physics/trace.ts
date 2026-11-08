@@ -25,6 +25,11 @@ export interface Segment {
   reflectance?: number;
   /** For 'lens': focal length (negative = diverging). */
   focal?: number;
+  /** Vertical extent relative to the optical axis (used only by the 3D tracer). */
+  hMin?: number;
+  hMax?: number;
+  /** Round aperture radius (lenses), used only by the 3D tracer. */
+  disk?: number;
 }
 
 export interface Circle {

@@ -6,6 +6,7 @@
  */
 import type { RefractiveIndex } from '../physics/optics';
 import type { BeamSource, Bounds, Circle, OpticalScene, Segment } from '../physics/trace';
+import { Source3, coneDirections, v3 } from '../physics/trace3d';
 import { Vec2, add, deg2rad, fromAngle, normalize, perp, rotate, sub, vec } from '../physics/vec';
 
 export type ElementKind =
@@ -62,6 +63,21 @@ export const TARGET_RADIUS = 0.45;
 export const RING_RADIUS = 0.25;
 export const DEFAULT_GLASS_INDEX = 1.5;
 export const DEFAULT_WAVELENGTH = 532;
+/**
+ * Height of the optical axis above the table. Physics is 2D in the plane of this axis; the 3D view
+ * and the 3D cone rays use the vertical sizes below (all measured from the axis).
+ */
+export const AXIS_HEIGHT = 1.15;
+export const WALL_HEIGHT = 1.6;
+export const HALF_HEIGHT = {
+  mirror: 0.23,
+  splitter: 1 / Math.SQRT2 / 2,
+  glass: 0.3,
+  screen: 0.35,
+  aperture: 0.3,
+  laser: 0.15,
+  led: 0.17,
+};
 export const LENS_LENGTH = 1.6;
 export const SCREEN_LENGTH = 2.4;
 export const OBJECT_HEIGHT = 1.2;
@@ -178,6 +194,21 @@ export function objectSources(el: ElementState): BeamSource[] {
       { ...el, wavelength: pt.wl }, objectGroup(el.id, pt.name)));
 }
 
+/**
+ * 3D cones of rays for drawing (LEDs and object points). Each cone has the same half-angle as the
+ * element's 2D fan, so the in-plane slice of the cone matches the 2D rays used for scoring.
+ */
+export function coneSources(el: ElementState): Source3[] {
+  const mk = (p: Vec2, wl: number) => coneDirections(el.rotation, el.spread ?? (el.kind === 'led' ? 10 : 12))
+    .map((dir) => ({ origin: v3(p.x, p.y, 0), dir, wavelength: wl, intensity: 1 }));
+  if (el.kind === 'led') return mk(toWorld(el, vec(LED_SIZE / 2 + 0.02, 0)), el.wavelength ?? DEFAULT_WAVELENGTH);
+  if (el.kind === 'object') {
+    const H = el.len ?? OBJECT_HEIGHT;
+    return OBJECT_POINTS.flatMap((pt) => mk(toWorld(el, vec(0, pt.f * H)), pt.wl));
+  }
+  return [];
+}
+
 export function buildOpticalScene(
   elements: ElementState[], bounds: Bounds,
 ): { scene: OpticalScene; sources: BeamSource[] } {
@@ -186,6 +217,7 @@ export function buildOpticalScene(
   const sources: BeamSource[] = [];
 
   for (const el of elements) {
+    const first = segments.length;
     switch (el.kind) {
       case 'laser':
         sources.push(laserSource(el));
@@ -246,10 +278,29 @@ export function buildOpticalScene(
         circles.push({ c: vec(el.x, el.y), r: el.r ?? RING_RADIUS, kind: 'sensor', ownerId: el.id });
         break;
     }
+    // Vertical size (for the 3D view and 3D cone rays; the 2D physics ignores it).
+    const ext = verticalExtent(el);
+    for (let i = first; i < segments.length; i++) Object.assign(segments[i], ext);
   }
   return { scene: { segments, circles, bounds }, sources };
 }
 
+/** Vertical size of an element's surfaces, relative to the optical axis (lenses are round discs). */
+export function verticalExtent(el: ElementState): { hMin?: number; hMax?: number; disk?: number } {
+  switch (el.kind) {
+    case 'lens': return { disk: (el.len ?? LENS_LENGTH) / 2 };
+    case 'mirror': return { hMin: -HALF_HEIGHT.mirror, hMax: HALF_HEIGHT.mirror };
+    case 'splitter': return { hMin: -HALF_HEIGHT.splitter, hMax: HALF_HEIGHT.splitter };
+    case 'block':
+    case 'prism': return { hMin: -HALF_HEIGHT.glass, hMax: HALF_HEIGHT.glass };
+    case 'screen': return { hMin: -HALF_HEIGHT.screen, hMax: HALF_HEIGHT.screen };
+    case 'aperture': return { hMin: -HALF_HEIGHT.aperture, hMax: HALF_HEIGHT.aperture };
+    case 'laser': return { hMin: -HALF_HEIGHT.laser, hMax: HALF_HEIGHT.laser };
+    case 'led': return { hMin: -HALF_HEIGHT.led, hMax: HALF_HEIGHT.led };
+    case 'wall': return { hMin: -AXIS_HEIGHT, hMax: (el.height ?? WALL_HEIGHT) - AXIS_HEIGHT };
+    default: return {};
+  }
+}
 /** Rough footprint radius, used to stop elements being placed on top of each other. */
 export function footprint(el: ElementState): number {
   switch (el.kind) {

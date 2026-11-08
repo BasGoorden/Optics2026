@@ -5,7 +5,8 @@ import { audio } from './audio/audio';
 import { TRACKS } from './audio/music';
 import { LEVELS } from './content/levels';
 import { TEXT } from './content/text';
-import { ElementState, LED_SIZE, PlaceableKind } from './game/elements';
+import { AXIS_HEIGHT, ElementState, LED_SIZE, PlaceableKind, buildOpticalScene, coneSources } from './game/elements';
+import { trace3d } from './physics/trace3d';
 import { LevelSession } from './game/session';
 import { deg2rad } from './physics/vec';
 import { BeamRenderer } from './render/beams';
@@ -166,6 +167,7 @@ export class App {
     for (const v of this.views.values()) this.removeView(v);
     this.views.clear();
     this.beams.show({ segments: [], interactions: [], hitTargets: new Set(), hitSensors: new Set(), power: new Map(), screenHits: [] });
+    this.beams.showCones([]);
     if (this.completionTimer) clearTimeout(this.completionTimer);
   }
 
@@ -204,6 +206,11 @@ export class App {
 
     const ev = s.evaluation;
     this.beams.show(ev.trace);
+    // 3D cones of light from LEDs and objects (drawing only; goals use the 2D in-plane rays).
+    const cones = s.elements.flatMap((e) => coneSources(e));
+    this.beams.showCones(cones.length
+      ? trace3d(buildOpticalScene(s.elements, s.level.bounds).scene, cones, { floor: -AXIS_HEIGHT }).segments
+      : []);
     const lit = new Set(ev.litTargets);
     for (const el of s.elements) {
       if (el.kind === 'target') this.views.get(el.id)?.setLit?.(lit.has(el.id));

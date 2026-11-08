@@ -110,8 +110,8 @@ export const CHAPTER2: LevelDef[] = [
     elements: [
       { id: 'laser', kind: 'laser', x: -5, y: -1.5, rotation: 0, rotatable: true },
       { id: 'rod', kind: 'block', x: 0.5, y: 0, rotation: 0, w: 7, h: 0.6, index: 1.5 },
-      { id: 'w1', kind: 'wall', x: 0.5, y: 0.9, rotation: 0, w: 6, h: 0.5, height: 0.25 },
-      { id: 'w2', kind: 'wall', x: 0.5, y: -0.9, rotation: 0, w: 6, h: 0.5, height: 0.25 },
+      { id: 'w1', kind: 'wall', x: 0.5, y: 0.9, rotation: 0, w: 6, h: 0.5, height: 1.0 },
+      { id: 'w2', kind: 'wall', x: 0.5, y: -0.9, rotation: 0, w: 6, h: 0.5, height: 1.0 },
       { id: 'target', kind: 'target', x: 4.6, y: 0, rotation: 0 },
       { id: 'ring', kind: 'ring', x: 1.05, y: -0.2, rotation: 0, r: 0.15 },
     ],

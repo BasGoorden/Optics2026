@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import {
-  ElementState, LASER_SIZE, MIRROR_LENGTH, PRISM_LOCAL, RING_RADIUS, SPLITTER_LENGTH, TARGET_RADIUS,
+  ElementState, HALF_HEIGHT, LASER_SIZE, MIRROR_LENGTH, PRISM_LOCAL, RING_RADIUS, SPLITTER_LENGTH, TARGET_RADIUS, WALL_HEIGHT,
 } from '../game/elements';
 import type { ImageResult } from '../game/level';
 import type { ScreenHit } from '../physics/trace';
@@ -121,7 +121,7 @@ function mirrorView(el: ElementState): ElementView {
   const M = mats();
   const g = new THREE.Group();
   const L = MIRROR_LENGTH;
-  const H = 0.46;
+  const H = HALF_HEIGHT.mirror * 2;
   g.add(mesh(new THREE.BoxGeometry(L, H, 0.035), M.mirror, 0, Y, 0));
   // Frame: top and bottom rails, end caps.
   g.add(mesh(new THREE.BoxGeometry(L + 0.06, 0.05, 0.09), M.anodized, 0, Y + H / 2 + 0.02, 0));
@@ -179,7 +179,7 @@ function glassView(el: ElementState, quality: Quality): ElementView {
       { x: (el.w ?? 1) / 2, y: (el.h ?? 1) / 2 }, { x: -(el.w ?? 1) / 2, y: (el.h ?? 1) / 2 },
     ];
   const n = typeof el.index === 'number' ? el.index : 1.5;
-  const H = 0.6;
+  const H = HALF_HEIGHT.glass * 2;
   const geo = extrudePolygon(pts, H);
   const glass = new THREE.Mesh(geo, glassMaterial(quality, n));
   glass.position.y = Y - H / 2;
@@ -216,7 +216,7 @@ function wallView(el: ElementState): ElementView {
   const g = new THREE.Group();
   const w = el.w ?? 1;
   const h = el.h ?? 1;
-  const H = el.height ?? 0.9;
+  const H = el.height ?? WALL_HEIGHT;
   g.add(mesh(new THREE.BoxGeometry(w, H, h), M.anodized, 0, H / 2, 0));
   // Thin red safety edge along the top.
   const edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, 0.001, h));

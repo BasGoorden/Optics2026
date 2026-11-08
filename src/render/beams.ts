@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { Interaction, TraceResult } from '../physics/trace';
+import type { Segment3 } from '../physics/trace3d';
 import { rad2deg } from '../physics/vec';
 import { BEAM_HEIGHT, wavelengthToColor } from './color';
 
@@ -120,6 +121,38 @@ export class BeamRenderer {
       this.sparkSprites.push(sp);
     }
     this.buildOverlay(trace);
+  }
+
+  private cones: THREE.LineSegments | null = null;
+
+  /**
+   * Draw 3D cone rays (from LEDs and objects) as one batch of thin additive lines.
+   * Rays off the axis plane are drawn fainter, so the in-plane slice (used for scoring) stands out.
+   */
+  showCones(segments: Segment3[]): void {
+    if (this.cones) {
+      this.group.remove(this.cones);
+      this.cones.geometry.dispose();
+      (this.cones.material as THREE.Material).dispose();
+      this.cones = null;
+    }
+    if (!segments.length) return;
+    const pos = new Float32Array(segments.length * 6);
+    const col = new Float32Array(segments.length * 6);
+    segments.forEach((s, i) => {
+      pos.set([s.from.x, BEAM_HEIGHT + s.from.h, -s.from.y, s.to.x, BEAM_HEIGHT + s.to.h, -s.to.y], i * 6);
+      // Fainter the further a ray is from the axis plane, so the scored in-plane slice stands out.
+      const off = Math.min(1, (Math.abs(s.from.h) + Math.abs(s.to.h)) / 1.2);
+      const c = wavelengthToColor(s.wavelength).multiplyScalar((0.32 - 0.17 * off) * Math.min(1, s.intensity));
+      col.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6);
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    this.cones = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    }));
+    this.group.add(this.cones);
   }
 
   update(t: number): void {

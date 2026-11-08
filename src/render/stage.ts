@@ -15,7 +15,7 @@ import { breadboardTexture } from './parts';
 
 export type Quality = 'low' | 'medium' | 'high';
 
-const DEFAULT_VIEW = { pos: new THREE.Vector3(0, 10.5, 9.5), target: new THREE.Vector3(0, 0, 0.6) };
+const DEFAULT_VIEW = { pos: new THREE.Vector3(0, 11, 9.8), target: new THREE.Vector3(0, 0.5, 0.6) };
 const TOP_VIEW = { pos: new THREE.Vector3(0, 15, 0.01), target: new THREE.Vector3(0, 0, 0) };
 
 export class Stage {

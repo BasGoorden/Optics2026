@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { AXIS_HEIGHT } from '../game/elements';
 
 /** Approximate visible-spectrum colour for a wavelength in nm (380–780). */
 export function wavelengthToColor(nm: number): THREE.Color {
@@ -23,8 +24,8 @@ export function tableToWorld(x: number, y: number, height = 0): THREE.Vector3 {
   return new THREE.Vector3(x, height, -y);
 }
 
-/** Height of the optical axis above the breadboard (room for posts and mounts below). */
-export const BEAM_HEIGHT = 0.5;
+/** Height of the optical axis above the breadboard (room for posts and round lens mounts below). */
+export const BEAM_HEIGHT = AXIS_HEIGHT;
 
 export const PALETTE = {
   cyan: new THREE.Color('#38e8ff'),
