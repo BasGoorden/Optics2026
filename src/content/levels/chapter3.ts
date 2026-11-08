@@ -63,8 +63,8 @@ export const CHAPTER3: LevelDef[] = [
     bounds: TABLE,
     elements: [
       { id: 'led', kind: 'led', x: -5.22, y: 0, rotation: 0, spread: 15, rays: 15 },
-      { id: 'w1', kind: 'wall', x: 2, y: 0.9, rotation: 0, w: 6, h: 0.6, height: 0.4 },
-      { id: 'w2', kind: 'wall', x: 2, y: -0.9, rotation: 0, w: 6, h: 0.6, height: 0.4 },
+      { id: 'w1', kind: 'wall', x: 2, y: 0.9, rotation: 0, w: 6, h: 0.6 },
+      { id: 'w2', kind: 'wall', x: 2, y: -0.9, rotation: 0, w: 6, h: 0.6 },
       { id: 'target', kind: 'target', x: 5.4, y: 0, rotation: 0, r: 0.3, minPower: 0.7 },
     ],
     inventory: { lens: 1 },

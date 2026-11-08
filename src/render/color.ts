@@ -23,7 +23,8 @@ export function tableToWorld(x: number, y: number, height = 0): THREE.Vector3 {
   return new THREE.Vector3(x, height, -y);
 }
 
-export const BEAM_HEIGHT = 0.35;
+/** Height of the optical axis above the breadboard (room for posts and mounts below). */
+export const BEAM_HEIGHT = 0.5;
 
 export const PALETTE = {
   cyan: new THREE.Color('#38e8ff'),

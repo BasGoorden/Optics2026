@@ -11,6 +11,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { Bounds } from '../physics/trace';
 import { PALETTE } from './color';
+import { breadboardTexture } from './parts';
 
 export type Quality = 'low' | 'medium' | 'high';
 
@@ -127,19 +128,31 @@ export class Stage {
 
     const top = new THREE.Mesh(
       new THREE.BoxGeometry(w + 0.6, 0.4, d + 0.6),
-      new THREE.MeshStandardMaterial({ color: '#0b1020', metalness: 0.6, roughness: 0.45 }),
+      new THREE.MeshStandardMaterial({ color: '#121419', metalness: 0.6, roughness: 0.45 }),
     );
     top.position.set(cx, -0.2, cz);
     top.receiveShadow = true;
     top.name = 'table';
     this.tableGroup.add(top);
 
-    const grid = new THREE.GridHelper(Math.max(w, d), Math.max(w, d), '#1d6f8a', '#12324a');
-    grid.scale.set(w / Math.max(w, d), 1, d / Math.max(w, d));
-    grid.position.set(cx, 0.002, cz);
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.55;
-    this.tableGroup.add(grid);
+    // Optical breadboard surface: tapped holes on the 0.5 placement grid.
+    const board = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, d),
+      new THREE.MeshStandardMaterial({ map: breadboardTexture(w, d), metalness: 0.5, roughness: 0.5 }),
+    );
+    board.rotation.x = -Math.PI / 2;
+    board.position.set(cx, 0.002, cz);
+    board.receiveShadow = true;
+    this.tableGroup.add(board);
+    // Faint lines every whole unit help reading coordinates.
+    const pts: number[] = [];
+    for (let x = Math.ceil(b.minX); x <= b.maxX; x++) pts.push(x, 0.004, -b.minY, x, 0.004, -b.maxY);
+    for (let y = Math.ceil(b.minY); y <= b.maxY; y++) pts.push(b.minX, 0.004, -y, b.maxX, 0.004, -y);
+    const gridGeo = new THREE.BufferGeometry();
+    gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    this.tableGroup.add(new THREE.LineSegments(
+      gridGeo, new THREE.LineBasicMaterial({ color: '#2a7f9e', transparent: true, opacity: 0.16 }),
+    ));
 
     // Neon trim around the table edge.
     const trimMat = new THREE.MeshBasicMaterial({ color: PALETTE.cyan.clone().multiplyScalar(1.15), toneMapped: false });
