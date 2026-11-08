@@ -31,6 +31,14 @@ describe.each(LEVELS.map((l) => [l.id, l] as const))('level %s', (_id, level) =>
       for (const id of Object.keys(sol.rotate ?? {})) {
         expect(level.elements.find((e) => e.id === id)?.rotatable).toBe(true);
       }
+      // Reachable with the default 5° rotation step and 0.5 grid (no Shift needed).
+      for (const r of [...placed.map((p) => p.rotation), ...Object.values(sol.rotate ?? {})]) {
+        expect(Math.abs(r % 5)).toBe(0);
+      }
+      for (const p of placed) {
+        expect(Math.abs((p.x * 2) % 1)).toBe(0);
+        expect(Math.abs((p.y * 2) % 1)).toBe(0);
+      }
     }
   });
 });

@@ -18,7 +18,8 @@ export const LEVELS: LevelDef[] = [
     intro: [
       'Welcome aboard, cadet! I\'m Lumen, the station\'s optics assistant.',
       'Our laser can\'t reach the receiver. Take a mirror from the tray below and place it in the beam.',
-      'Rotate it with Q and E (hold Shift for fine steps), or scroll over it. Drag to move it.',
+      'Rotate it with Q and E or by scrolling over it: 5° per step, or 1° while you hold Shift. Drag to move it.',
+      'Want the third star? Look at the selected mirror\'s angle at the bottom of the screen and fine-tune until the beam threads the gold ring.',
     ],
     hints: [
       'The beam travels in a straight line until it hits something. Where must the mirror go to catch it?',
@@ -38,13 +39,13 @@ export const LEVELS: LevelDef[] = [
     elements: [
       { id: 'laser', kind: 'laser', x: -5, y: -2, rotation: 0 },
       { id: 'target', kind: 'target', x: 2, y: 3, rotation: 0 },
-      { id: 'ring', kind: 'ring', x: 0, y: 0.5, rotation: 0 },
+      { id: 'ring', kind: 'ring', x: 0, y: 0.5, rotation: 0, r: 0.3 },
     ],
     inventory: { mirror: 1 },
     par: 1,
     bonus: { description: 'Send the beam through the bonus ring', ringIds: ['ring'] },
     solution: { place: [{ kind: 'mirror', x: 2, y: -2, rotation: 45 }] },
-    bonusSolution: { place: [{ kind: 'mirror', x: -2, y: -2, rotation: 26 }] },
+    bonusSolution: { place: [{ kind: 'mirror', x: -2, y: -2, rotation: 25 }] },
   },
   {
     id: '1-2',
@@ -87,7 +88,7 @@ export const LEVELS: LevelDef[] = [
     bonusSolution: {
       place: [
         { kind: 'mirror', x: -2, y: 3, rotation: -45 },
-        { kind: 'mirror', x: -2, y: -3.5, rotation: -38 },
+        { kind: 'mirror', x: -2, y: -3.5, rotation: -40 },
       ],
     },
   },
@@ -161,7 +162,7 @@ export const LEVELS: LevelDef[] = [
     par: 0,
     bonus: { description: 'Shift the beam just enough to pass through the small ring', ringIds: ['ring'] },
     solution: { place: [], rotate: { block: -45 } },
-    bonusSolution: { place: [], rotate: { block: -54 } },
+    bonusSolution: { place: [], rotate: { block: -55 } },
   },
   {
     id: '1-5',

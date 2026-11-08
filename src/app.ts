@@ -14,8 +14,15 @@ import { Stage } from './render/stage';
 import { progress } from './save/progress';
 import { Hud } from './ui/hud';
 
+/** Grid snap for moving; Shift-drag uses the fine grid. */
 const SNAP = 0.5;
-const snap = (v: number) => Math.round(v / SNAP) * SNAP;
+const FINE_SNAP = 0.25;
+/** Rotation step for Q/E, scroll and the handle; Shift gives 1°. */
+const ROT_STEP = 5;
+const snap = (v: number, fine = false) => {
+  const s = fine ? FINE_SNAP : SNAP;
+  return Math.round(v / s) * s;
+};
 const fmtDeg = (d: number) => `${Number.isInteger(d) ? d : d.toFixed(1)}°`;
 
 export class App {
@@ -237,8 +244,8 @@ export class App {
     if (el.rotatable) parts.push(`<span class="angle">${fmtDeg(el.rotation)}</span>`);
     if (el.kind === 'block' || el.kind === 'prism') parts.push(`n = ${typeof el.index === 'number' ? el.index.toFixed(2) : '1.50'}`);
     const tips: string[] = [];
-    if (el.movable) tips.push('drag to move');
-    if (el.rotatable) tips.push('Q/E or scroll to rotate, or drag the pink handle');
+    if (el.movable) tips.push('drag to move (Shift: fine)');
+    if (el.rotatable) tips.push('Q/E or scroll: rotate 5° · hold Shift: 1° steps');
     if (el.placed) tips.push('right-click to remove');
     this.hud.setSelection(`${parts.join(' · ')}<small>${tips.join(' · ')}</small>`);
   }
@@ -280,7 +287,7 @@ export class App {
     const el = this.selectedId ? this.session?.get(this.selectedId) : undefined;
     if (!el || !el.rotatable) return;
     const step = Math.abs(delta);
-    const target = step >= 15 ? Math.round((el.rotation + delta) / 15) * 15 : el.rotation + delta;
+    const target = step > 1 ? Math.round((el.rotation + delta) / step) * step : el.rotation + delta;
     if (this.session!.rotate(el.id, target)) { audio.tick(); this.refresh(); }
   }
 
@@ -310,7 +317,7 @@ export class App {
       e.stopImmediatePropagation();
       this.select(el.id);
       const dir = (e.deltaY || e.deltaX) > 0 ? -1 : 1;
-      this.rotateSelected(dir * (e.shiftKey ? 1 : 15));
+      this.rotateSelected(dir * (e.shiftKey ? 1 : ROT_STEP));
     }, { capture: true, passive: false });
 
     window.addEventListener('keydown', (e) => {
@@ -325,8 +332,8 @@ export class App {
         return;
       }
       if (!this.session || this.hud.modalOpen) return;
-      if (k === 'q') this.rotateSelected(e.shiftKey ? 1 : 15);
-      else if (k === 'e') this.rotateSelected(e.shiftKey ? -1 : -15);
+      if (k === 'q') this.rotateSelected(e.shiftKey ? 1 : ROT_STEP);
+      else if (k === 'e') this.rotateSelected(e.shiftKey ? -1 : -ROT_STEP);
       else if (k === 'f') this.toggleOverlay();
       else if (k === 'h') this.hint();
       else if (k === 't') { this.stage.toggleTopView(); this.syncToggles(); }
@@ -427,7 +434,7 @@ export class App {
 
     if (this.drag === 'move' && this.selectedId) {
       const p = this.tablePoint(e);
-      if (p && this.session.move(this.selectedId, snap(p.x), snap(p.y))) {
+      if (p && this.session.move(this.selectedId, snap(p.x, e.shiftKey), snap(p.y, e.shiftKey))) {
         audio.tick();
         this.refresh();
       }
@@ -438,7 +445,7 @@ export class App {
       const el = this.session.get(this.selectedId);
       if (p && el) {
         const raw = (Math.atan2(p.y - el.y, p.x - el.x) * 180) / Math.PI;
-        const step = e.shiftKey ? 1 : 15;
+        const step = e.shiftKey ? 1 : ROT_STEP;
         if (this.session.rotate(el.id, Math.round(raw / step) * step)) { audio.tick(); this.refresh(); }
       }
       return;

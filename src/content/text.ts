@@ -37,8 +37,8 @@ export const TEXT = {
   solved: ['Beautiful! The receiver is online.', 'Light delivered!', 'Nicely done, cadet.'],
   allDone: 'That\'s every level built so far. More chapters are on the way!',
   controls: [
-    ['Drag', 'move an element (cyan base)'],
-    ['Q / E or scroll', 'rotate (hold Shift for 1° steps)'],
+    ['Drag', 'move an element (cyan base), Shift for fine steps'],
+    ['Q / E or scroll', 'rotate 5° (hold Shift for 1° steps)'],
     ['Right-click / Del', 'return an element to the tray'],
     ['Drag empty space', 'orbit the camera'],
     ['F', 'physics overlay'],
