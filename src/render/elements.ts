@@ -5,13 +5,18 @@
  */
 import * as THREE from 'three';
 import {
-  ElementState, HALF_HEIGHT, LASER_SIZE, MIRROR_LENGTH, PRISM_LOCAL, RING_RADIUS, SPLITTER_LENGTH, TARGET_RADIUS, WALL_HEIGHT,
+  DPRISM_LOCAL, ElementState, HALF_HEIGHT, LASER_SIZE, MIRROR_LENGTH, PRISM_LOCAL, RING_RADIUS, SPLITTER_LENGTH, TARGET_RADIUS, WALL_HEIGHT,
 } from '../game/elements';
-import type { ImageResult } from '../game/level';
+import type { ImageResult, PatternResult } from '../game/level';
 import type { ScreenHit } from '../physics/trace';
+import { bandName } from '../physics/colour';
 import { deg2rad } from '../physics/vec';
+import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { BEAM_HEIGHT, PALETTE, wavelengthToColor } from './color';
-import { buildAperture, buildLed, buildLens, buildObject, buildScreen } from './imaging';
+import {
+  buildAperture, buildDichroic, buildFilter, buildGrating, buildLed, buildLens, buildObject, buildPolariser, buildScreen,
+  buildSlits, buildSlm,
+} from './imaging';
 import { glow, indicatorColor, knob, mats, mesh, post } from './parts';
 import type { Quality } from './stage';
 
@@ -24,7 +29,7 @@ export interface ElementView {
   /** For targets and rings: lit by the beam. */
   setLit?(on: boolean): void;
   /** For screens: show where rays land, and the image if it is sharp. */
-  showScreen?(hits: ScreenHit[], image?: ImageResult): void;
+  showScreen?(hits: ScreenHit[], image?: ImageResult, pattern?: PatternResult): void;
   update?(t: number, dt: number): void;
 }
 
@@ -87,7 +92,7 @@ export function makeView(el: ElementState, group: THREE.Group, extra: Partial<El
 function laserView(el: ElementState): ElementView {
   const M = mats();
   const g = new THREE.Group();
-  const color = wavelengthToColor(el.wavelength ?? 532);
+  const color = el.spectrum ? new THREE.Color(1, 1, 1) : wavelengthToColor(el.wavelength ?? 532);
   const L = LASER_SIZE.w;
   const tube = mesh(new THREE.CylinderGeometry(0.15, 0.15, L - 0.1, 28), M.anodized, -0.03, Y, 0);
   tube.rotation.z = Math.PI / 2;
@@ -196,7 +201,7 @@ function glassView(el: ElementState, quality: Quality): ElementView {
   const g = new THREE.Group();
   const pts = el.kind === 'prism'
     ? PRISM_LOCAL
-    : [
+    : el.kind === 'dprism' ? DPRISM_LOCAL : [
       { x: -(el.w ?? 1) / 2, y: -(el.h ?? 1) / 2 }, { x: (el.w ?? 1) / 2, y: -(el.h ?? 1) / 2 },
       { x: (el.w ?? 1) / 2, y: (el.h ?? 1) / 2 }, { x: -(el.w ?? 1) / 2, y: (el.h ?? 1) / 2 },
     ];
@@ -290,6 +295,21 @@ function targetView(el: ElementState): ElementView {
   area.position.y = 0.006;
   const light = new THREE.PointLight(PALETTE.green, 0, 3);
   light.position.y = Y + 0.3;
+  // Colour receivers: a coloured dot for each colour they need, and a small label.
+  const needs = el.needs ?? [];
+  needs.forEach((n, i) => {
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), glow(wavelengthToColor((n.band[0] + n.band[1]) / 2), 2.5));
+    dot.position.set((i - (needs.length - 1) / 2) * 0.16, Y + R + 0.1, 0);
+    g.add(dot);
+  });
+  if (needs.length || el.forbid?.length) {
+    const div = document.createElement('div');
+    div.className = 'pol-label';
+    div.textContent = needs.map((n) => bandName(n.band)).join(' + ') + (el.forbid?.length ? ' only' : '');
+    const label = new CSS2DObject(div);
+    label.position.set(0, Y + R + 0.35, 0);
+    g.add(label);
+  }
   g.add(band, ...ports, area, light, post(Y - R, indicatorColor(false)));
   // Receivers never move: hide the indicator ring.
   g.traverse((o) => { if (o.userData.indicator) o.visible = false; });
@@ -349,7 +369,14 @@ export function createElementView(el: ElementState, quality: Quality): ElementVi
       return makeView(el, s.group, { showScreen: s.show });
     }
     case 'block':
-    case 'prism': return glassView(el, quality);
+    case 'prism':
+    case 'dprism': return glassView(el, quality);
+    case 'filter': return makeView(el, buildFilter(el));
+    case 'polariser': return makeView(el, buildPolariser(el));
+    case 'dichroic': return makeView(el, buildDichroic(el));
+    case 'grating': return makeView(el, buildGrating(el));
+    case 'slits': return makeView(el, buildSlits(el));
+    case 'slm': return makeView(el, buildSlm(el));
     case 'wall': return wallView(el);
     case 'target': return targetView(el);
     case 'ring': return ringView(el);

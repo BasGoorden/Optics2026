@@ -53,12 +53,29 @@ export class BeamRenderer {
     this.sparks.clear();
     this.sparkSprites = [];
 
+    // Rays of different colours on exactly the same path (e.g. white light before a prism) are merged,
+    // with their colours added, so white light looks white.
+    const merged = new Map<string, { s: (typeof trace.segments)[number]; color: THREE.Color; intensity: number; rel: number }>();
     for (const s of trace.segments) {
+      const key = [s.from.x, s.from.y, s.to.x, s.to.y].map((v) => v.toFixed(4)).join(',');
+      const c = wavelengthToColor(s.wavelength).multiplyScalar(s.intensity);
+      const m = merged.get(key);
+      if (m) {
+        m.color.add(c);
+        m.intensity += s.intensity;
+        m.rel = Math.max(m.rel, s.rel);
+      } else {
+        merged.set(key, { s, color: c, intensity: s.intensity, rel: s.rel });
+      }
+    }
+    for (const m of merged.values()) {
+      const s = { ...m.s, intensity: m.intensity, rel: m.rel };
       const a = new THREE.Vector3(s.from.x, BEAM_HEIGHT, -s.from.y);
       const b = new THREE.Vector3(s.to.x, BEAM_HEIGHT, -s.to.y);
       const len = a.distanceTo(b);
       if (len < 1e-4) continue;
-      const color = wavelengthToColor(s.wavelength);
+      const peak = Math.max(m.color.r, m.color.g, m.color.b) || 1;
+      const color = m.color.clone().multiplyScalar(1 / peak);
       const mid = a.clone().add(b).multiplyScalar(0.5);
       const q = new THREE.Quaternion().setFromUnitVectors(UP, b.clone().sub(a).normalize());
       // Inside glass the beam looks a little softer; weak beams are thinner and dimmer.

@@ -64,6 +64,15 @@ export class LevelSession {
     return true;
   }
 
+  /** Set an SLM's program. */
+  setProgram(id: string, program: number): boolean {
+    const el = this.get(id);
+    if (!el || el.kind !== 'slm' || el.program === program) return false;
+    el.program = program;
+    this.reevaluate();
+    return true;
+  }
+
   remove(id: string): boolean {
     const i = this.elements.findIndex((e) => e.id === id && e.placed);
     if (i < 0) return false;

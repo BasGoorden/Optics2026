@@ -6,6 +6,7 @@
  * cone follow exactly the same paths as the 2D rays. Coordinates: x, y = table plane, h = height
  * relative to the optical axis.
  */
+import { DEFAULT_ORDERS, gratingSin, inBand } from './colour';
 import { indexAt } from './optics';
 import type { Bounds, OpticalScene, Segment } from './trace';
 
@@ -191,6 +192,38 @@ export function trace3d(scene: OpticalScene, sources: Source3[], opts: Trace3Opt
         intensity *= 1 - R;
       } else if (s.kind === 'lens') {
         d = thinLens3(d, p, s);
+      } else if (s.kind === 'filter') {
+        if (!(s.band && inBand(ray.wavelength, s.band))) break;
+      } else if (s.kind === 'dichroic') {
+        if (s.band && inBand(ray.wavelength, s.band)) d = reflect(d, facing);
+      } else if (s.kind === 'polariser') {
+        intensity *= 0.5; // drawing only: cones come from unpolarised sources
+      } else if (s.kind === 'slits') {
+        // pass straight through the opening
+      } else if (s.kind === 'slm' || s.kind === 'grating') {
+        if (s.kind === 'slm') d = reflect(d, facing);
+        // 3D grating: only the component across the lines changes (by mλ/d); the height component is kept.
+        const ex = s.b.x - s.a.x;
+        const ey = s.b.y - s.a.y;
+        const L = Math.hypot(ex, ey);
+        const t = v3(ex / L, ey / L, 0);
+        const axis = dot(d, n2d) >= 0 ? n2d : scale(n2d, -1);
+        const st = dot(d, t);
+        // The first existing order continues this ray; the others are spawned as new rays.
+        const outs: { dir: V3; eff: number }[] = [];
+        for (const o of s.orders ?? DEFAULT_ORDERS) {
+          const sm = gratingSin(st, o.m, ray.wavelength, s.period ?? 2);
+          if (sm === null) continue;
+          const ax2 = 1 - sm * sm - d.h * d.h;
+          if (ax2 <= 0) continue;
+          outs.push({ dir: norm3(add(add(scale(axis, Math.sqrt(ax2)), scale(t, sm)), v3(0, 0, d.h))), eff: o.eff });
+        }
+        if (!outs.length) break;
+        for (const o of outs.slice(1)) {
+          queue.push({ o: p, d: o.dir, n, intensity: intensity * o.eff, wavelength: ray.wavelength, lastSeg: bestSeg, depth: step + 1 });
+        }
+        d = outs[0].dir;
+        intensity *= outs[0].eff;
       } else {
         const glassN = indexAt(s.index ?? 1.5, ray.wavelength);
         const entering = dot(d, n2d) < 0;

@@ -3,7 +3,10 @@ import { CHAPTERS, LEVELS } from '../content/levels';
 import { TEXT } from '../content/text';
 import type { ElementState, PlaceableKind } from '../game/elements';
 import type { Evaluation, LevelDef } from '../game/level';
+import { ITEM_DEFAULTS } from '../game/level';
+import { BANDS, Band, bandName } from '../physics/colour';
 import { fresnelReflectance } from '../physics/optics';
+import { wavelengthToColor } from '../render/color';
 import type { Interaction } from '../physics/trace';
 import { rad2deg } from '../physics/vec';
 import type { Quality } from '../render/stage';
@@ -39,10 +42,21 @@ const ICONS: Record<string, string> = {
   lens: '<svg viewBox="0 0 40 40"><path d="M20 4 Q30 20 20 36 Q10 20 20 4Z" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
   dlens: '<svg viewBox="0 0 40 40"><path d="M13 4 H27 Q20 20 27 36 H13 Q20 20 13 4Z" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
   aperture: '<svg viewBox="0 0 40 40"><line x1="20" y1="3" x2="20" y2="16" stroke="currentColor" stroke-width="4"/><line x1="20" y1="24" x2="20" y2="37" stroke="currentColor" stroke-width="4"/><line x1="4" y1="20" x2="36" y2="20" stroke="currentColor" stroke-width="1.5" opacity=".6"/></svg>',
+  dprism: '<svg viewBox="0 0 40 40"><polygon points="20,6 35,32 5,32" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><line x1="2" y1="22" x2="14" y2="20" stroke="#fff" stroke-width="1.5"/><line x1="26" y1="22" x2="38" y2="16" stroke="#ff5050" stroke-width="1.5"/><line x1="26" y1="23" x2="38" y2="26" stroke="#5080ff" stroke-width="1.5"/></svg>',
+  filter: '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="13" fill="currentColor" fill-opacity=".45" stroke="currentColor" stroke-width="3"/></svg>',
+  dichroic: '<svg viewBox="0 0 40 40"><line x1="8" y1="32" x2="32" y2="8" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><line x1="2" y1="20" x2="20" y2="20" stroke="#fff" stroke-width="1.5"/><line x1="20" y1="20" x2="20" y2="2" stroke="currentColor" stroke-width="1.5"/><line x1="20" y1="20" x2="38" y2="20" stroke="#ff5050" stroke-width="1.5"/></svg>',
+  grating: '<svg viewBox="0 0 40 40"><rect x="16" y="5" width="8" height="30" fill="none" stroke="currentColor" stroke-width="2"/><line x1="18" y1="5" x2="18" y2="35" stroke="currentColor"/><line x1="20" y1="5" x2="20" y2="35" stroke="currentColor"/><line x1="22" y1="5" x2="22" y2="35" stroke="currentColor"/></svg>',
+  polariser: '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="14" fill="none" stroke="currentColor" stroke-width="3"/><line x1="10" y1="30" x2="30" y2="10" stroke="currentColor" stroke-width="2"/><line x1="14" y1="32" x2="32" y2="14" stroke="currentColor" stroke-width="1" opacity=".6"/><line x1="8" y1="26" x2="26" y2="8" stroke="currentColor" stroke-width="1" opacity=".6"/></svg>',
+  slits: '<svg viewBox="0 0 40 40"><line x1="20" y1="3" x2="20" y2="16" stroke="currentColor" stroke-width="4"/><line x1="20" y1="19" x2="20" y2="21" stroke="currentColor" stroke-width="4"/><line x1="20" y1="24" x2="20" y2="37" stroke="currentColor" stroke-width="4"/></svg>',
   prism: '<svg viewBox="0 0 40 40"><polygon points="8,32 8,8 32,8" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
   block: '<svg viewBox="0 0 40 40"><rect x="12" y="6" width="16" height="28" fill="none" stroke="currentColor" stroke-width="3" rx="2"/></svg>',
 };
 
+const PANEL_TYPES = ['reflect', 'refract', 'tir', 'split', 'polariser', 'filter', 'dichroic', 'grating', 'slm', 'slits'];
+/** CSS colour for a wavelength. */
+const cssColour = (nm: number) => `#${wavelengthToColor(nm).getHexString()}`;
+const colourDot = (band: Band, wl?: number) =>
+  `<span class="cdot" style="background:${cssColour(wl ?? (band[0] + band[1]) / 2)}"></span>`;
 const fresnelR = (it: Interaction) => fresnelReflectance(Math.cos(it.thetaI ?? 0), it.n1 ?? 1, it.n2 ?? 1);
 const star = (on: boolean) => `<span class="star ${on ? 'on' : ''}">★</span>`;
 const deg = (r?: number) => `${rad2deg(r ?? 0).toFixed(1)}°`;
@@ -175,14 +189,27 @@ export class Hud {
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     const rows: string[] = [];
     // Receivers that need a share of a fan's power show a power meter instead of a count.
-    const powered = elements.filter((e) => e.kind === 'target' && e.minPower !== undefined);
-    const plain = ev.requiredTargets.length - powered.length;
+    const coloured = (e: ElementState) => !!(e.needs?.length || e.forbid?.length);
+    const powered = elements.filter((e) => e.kind === 'target' && e.minPower !== undefined && !coloured(e));
+    const colourIds = elements.filter((e) => e.kind === 'target' && coloured(e)).map((e) => e.id);
+    const plain = ev.requiredTargets.length - powered.length - colourIds.length;
     if (plain > 0) {
-      rows.push(`${plain > 1 ? TEXT.stars.solveAll : TEXT.stars.solve} <small>${ev.litTargets.filter((id) => !powered.some((p) => p.id === id)).length}/${plain}</small>`);
+      const special = (id: string) => powered.some((p) => p.id === id) || colourIds.includes(id);
+      rows.push(`${plain > 1 ? TEXT.stars.solveAll : TEXT.stars.solve} <small>${ev.litTargets.filter((id) => !special(id)).length}/${plain}</small>`);
     }
     for (const t of powered) {
       const p = ev.trace.power.get(t.id) ?? 0;
       rows.push(`${TEXT.stars.power(pct(t.minPower!))} <small class="${p >= t.minPower! ? 'ok' : ''}">now ${pct(p)}</small>`);
+    }
+    for (const t of elements.filter((e) => e.kind === 'target' && (e.needs?.length || e.forbid?.length))) {
+      const lit = ev.litTargets.includes(t.id);
+      const want = (t.needs ?? []).map((n) => colourDot(n.band) + bandName(n.band)).join(' + ');
+      rows.push(`${TEXT.stars.colour(want, !!t.forbid?.length)} <small class="${lit ? 'ok' : ''}">${lit ? 'lit' : 'dark'}</small>`);
+    }
+    for (const p of ev.patterns) {
+      const what = p.goal.spacing ? TEXT.stars.fringes : TEXT.stars.central;
+      const now = Number.isFinite(p.value) ? p.value.toFixed(3) : '—';
+      rows.push(`${what(p.target.toFixed(2))} <small class="${p.ok ? 'ok' : ''}">now ${now}</small>`);
     }
     for (const im of ev.images) {
       const blur = im.formed ? im.blur.toFixed(2) : '—';
@@ -205,7 +232,11 @@ export class Hud {
     for (const k of kinds) {
       const n = remaining(k);
       const b = el('button', `tray-item ${active === k ? 'active' : ''} ${n <= 0 ? 'empty' : ''}`);
-      b.innerHTML = `${ICONS[k]}<span>${TEXT.inventory[k]}</span><b>×${n}</b>`;
+      const spec = { ...ITEM_DEFAULTS[k], ...level.templates?.[k] };
+      const name = TEXT.inventory[k] ?? spec.label ?? TEXT.elementNames[spec.kind ?? k] ?? k;
+      const icon = ICONS[k] ?? ICONS[spec.kind ?? ''] ?? ICONS.mirror;
+      const tint = spec.band ? ` style="color:${cssColour((spec.band[0] + spec.band[1]) / 2)}"` : '';
+      b.innerHTML = `<i${tint}>${icon}</i><span>${name}</span><b>×${n}</b>`;
       b.disabled = n <= 0;
       b.addEventListener('click', () => this.cb.pickInventory(k));
       this.tray.appendChild(b);
@@ -222,9 +253,25 @@ export class Hud {
     if (!on) return;
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     const rows = interactions
-      .filter((i) => i.intensity >= 0.1 && (i.type === 'reflect' || i.type === 'refract' || i.type === 'tir' || i.type === 'split'))
+      .filter((i) => i.intensity >= 0.05 && PANEL_TYPES.includes(i.type))
       .slice(0, 12)
       .map((it): [string, string] => {
+        const nm = it.wavelength ? `${it.wavelength} nm` : '';
+        if (it.type === 'polariser') {
+          const law = it.polIn === null || it.polIn === undefined
+            ? 'unpolarised light → ½ passes'
+            : `cos²(${it.polIn}° − ${it.axis}°) = ${pct(it.transmitted ?? 0)} passes`;
+          return [`Polariser ${it.axis}°`, `<code>Malus: ${law}</code>`];
+        }
+        if (it.type === 'filter') return ['Colour filter', `<code>${colourDot(BANDS.green, it.wavelength)} ${nm}: only the filter's own colour band gets through</code>`];
+        if (it.type === 'dichroic') return ['Dichroic mirror', `<code>${nm}: reflects its band, transmits the rest</code>`];
+        if (it.type === 'grating' || it.type === 'slm') {
+          const d = it.period ?? 2;
+          const s1 = (it.wavelength ?? 532) / 1000 / d;
+          const what = it.type === 'slm' ? 'SLM phase grating' : 'Diffraction grating';
+          return [what, `<code>d·sin θ = m·λ, d = ${d} µm</code><code>${nm}: first order sin θ = ${s1.toFixed(3)} → θ = ${deg(Math.asin(Math.min(1, s1)))}</code>`];
+        }
+        if (it.type === 'slits') return ['Slits', '<code>pattern on the screen: Δy = λL/d (double), W = 2λL/a (single)</code>'];
         if (it.type === 'reflect') {
           return ['Reflection', `<code>θᵢ = θᵣ = ${deg(it.thetaI)}</code>`];
         }

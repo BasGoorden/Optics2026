@@ -4,17 +4,22 @@
  *
  * Coordinates: table plane, x to the right, y away from the player; rotation in degrees, CCW.
  */
+import type { Band } from '../physics/colour';
 import type { RefractiveIndex } from '../physics/optics';
 import type { BeamSource, Bounds, Circle, OpticalScene, Segment } from '../physics/trace';
 import { Source3, coneDirections, v3 } from '../physics/trace3d';
 import { Vec2, add, deg2rad, fromAngle, normalize, perp, rotate, sub, vec } from '../physics/vec';
 
 export type ElementKind =
-  | 'laser' | 'led' | 'object' | 'mirror' | 'splitter' | 'block' | 'prism' | 'lens' | 'aperture' | 'screen'
+  | 'laser' | 'led' | 'object' | 'mirror' | 'splitter' | 'block' | 'prism' | 'dprism' | 'lens' | 'aperture' | 'screen'
+  | 'filter' | 'dichroic' | 'grating' | 'slits' | 'polariser' | 'slm'
   | 'target' | 'ring' | 'wall';
 
-/** Kinds the player can take from the inventory. */
-export type PlaceableKind = 'mirror' | 'splitter' | 'block' | 'prism' | 'lens' | 'dlens' | 'aperture';
+/**
+ * Inventory item id. Standard items are listed in ITEM_DEFAULTS (game/level.ts); levels can define more
+ * through their `templates` (e.g. 'filterR' = a filter that passes red).
+ */
+export type PlaceableKind = string;
 
 export interface ElementState {
   id: string;
@@ -55,6 +60,25 @@ export interface ElementState {
   /** LED/object: half-angle of the fan of rays (degrees) and number of rays per point. */
   spread?: number;
   rays?: number;
+  /** Laser/LED: emit several wavelengths at once (e.g. WHITE). */
+  spectrum?: number[];
+  /** Filter: band that passes. Dichroic mirror: band that is reflected. */
+  band?: Band;
+  /** Grating line spacing, µm. */
+  period?: number;
+  /** Colour receivers: power needed per band, and bands that must stay dark. */
+  needs?: { band: Band; min: number }[];
+  forbid?: Band[];
+  /** Laser polarisation angle (degrees); null = unpolarised. Polariser: transmission axis (degrees). */
+  pol?: number | null;
+  /** Slits: number of slits (1 or 2), slit width a and separation d, in µm. */
+  slitCount?: number;
+  slitWidth?: number;
+  slitSep?: number;
+  /** SLM program: index into SLM_PROGRAMS. */
+  program?: number;
+  /** Label shown in the inventory tray and selection panel (custom items). */
+  label?: string;
 }
 
 export const MIRROR_LENGTH = 1.2;
@@ -98,6 +122,27 @@ export const objectGroup = (objectId: string, point: string) => `${objectId}:${p
 /** Right-angle prism (legs 1.2) with its centroid at the origin; right angle at top-left. */
 export const PRISM_LOCAL: Vec2[] = [vec(-0.4, -0.8), vec(0.8, 0.4), vec(-0.4, 0.4)];
 
+/** Equilateral dispersing prism (side 1.4), centroid at the origin, apex towards +y. */
+export const DPRISM_LOCAL: Vec2[] = [90, 210, 330].map((a) => vec(0.808 * Math.cos(deg2rad(a)), 0.808 * Math.sin(deg2rad(a))));
+/** Dense flint glass: strong dispersion (Cauchy: n = A + B/λ², λ in µm). */
+export const FLINT = { A: 1.62, B: 0.02 };
+export const PLATE_LENGTH = 1.2;
+/** Width of the (tiny) slit opening on the table, for ray tracing. The real slit sizes are in µm. */
+export const SLIT_OPENING = 0.1;
+
+/** SLM programs the player cycles through (Q/E). Blazed ramps send light into one order; binary gratings split it. */
+export const SLM_PROGRAMS: { name: string; period?: number; orders: { m: number; eff: number }[] }[] = [
+  { name: 'Flat (mirror)', orders: [{ m: 0, eff: 1 }] },
+  { name: 'Ramp ↑ 6 µm', period: 6, orders: [{ m: 1, eff: 0.95 }] },
+  { name: 'Ramp ↑ 3 µm', period: 3, orders: [{ m: 1, eff: 0.95 }] },
+  { name: 'Ramp ↑ 2 µm', period: 2, orders: [{ m: 1, eff: 0.95 }] },
+  { name: 'Ramp ↓ 6 µm', period: 6, orders: [{ m: -1, eff: 0.95 }] },
+  { name: 'Ramp ↓ 3 µm', period: 3, orders: [{ m: -1, eff: 0.95 }] },
+  { name: 'Ramp ↓ 2 µm', period: 2, orders: [{ m: -1, eff: 0.95 }] },
+  { name: 'Split ± 3 µm', period: 3, orders: [{ m: 1, eff: 0.4 }, { m: -1, eff: 0.4 }] },
+  { name: 'Split ± 2 µm', period: 2, orders: [{ m: 1, eff: 0.4 }, { m: -1, eff: 0.4 }] },
+];
+
 /** Laser body size (local x = beam direction). */
 export const LASER_SIZE = { w: 0.9, h: 0.5 };
 
@@ -117,6 +162,8 @@ export function elementPolygon(el: ElementState): Vec2[] | null {
       return rectLocal(el.w ?? 1, el.h ?? 1).map((p) => toWorld(el, p));
     case 'prism':
       return PRISM_LOCAL.map((p) => toWorld(el, p));
+    case 'dprism':
+      return DPRISM_LOCAL.map((p) => toWorld(el, p));
     case 'laser':
       return rectLocal(LASER_SIZE.w, LASER_SIZE.h).map((p) => toWorld(el, p));
     case 'led':
@@ -148,15 +195,14 @@ export function mirrorEnds(el: ElementState): [Vec2, Vec2] {
   return [sub(vec(el.x, el.y), half), add(vec(el.x, el.y), half)];
 }
 
-export function laserSource(el: ElementState): BeamSource {
+/** Laser beam: one ray per wavelength (a white source has several), polarised at `pol` (default 0°). */
+export function laserSources(el: ElementState): BeamSource[] {
   const dir = fromAngle(deg2rad(el.rotation));
-  return {
+  const wls = el.spectrum ?? [el.wavelength ?? DEFAULT_WAVELENGTH];
+  return wls.map((wavelength) => ({
     origin: toWorld(el, vec(LASER_SIZE.w / 2 + 0.01, 0)),
-    dir,
-    wavelength: el.wavelength ?? DEFAULT_WAVELENGTH,
-    intensity: 1,
-    ownerId: el.id,
-  };
+    dir, wavelength, intensity: 1 / wls.length, ownerId: el.id, pol: el.pol === undefined ? 0 : el.pol,
+  }));
 }
 
 /**
@@ -173,12 +219,15 @@ function fan(
   p: Vec2, rotation: number, spread: number, rays: number, total: number, el: ElementState, group?: string,
 ): BeamSource[] {
   const out: BeamSource[] = [];
+  const wls = el.spectrum ?? [el.wavelength ?? DEFAULT_WAVELENGTH];
   for (let i = 0; i < rays; i++) {
     const a = rays === 1 ? 0 : -spread + (2 * spread * i) / (rays - 1);
-    out.push({
-      origin: p, dir: fromAngle(deg2rad(rotation + a)), wavelength: el.wavelength ?? DEFAULT_WAVELENGTH,
-      intensity: total / rays, ownerId: el.id, group,
-    });
+    for (const wavelength of wls) {
+      out.push({
+        origin: p, dir: fromAngle(deg2rad(rotation + a)), wavelength,
+        intensity: total / rays / wls.length, ownerId: el.id, group, pol: null,
+      });
+    }
   }
   return out;
 }
@@ -199,9 +248,12 @@ export function objectSources(el: ElementState): BeamSource[] {
  * element's 2D fan, so the in-plane slice of the cone matches the 2D rays used for scoring.
  */
 export function coneSources(el: ElementState): Source3[] {
-  const mk = (p: Vec2, wl: number) => coneDirections(el.rotation, el.spread ?? (el.kind === 'led' ? 10 : 12))
+  const mk = (p: Vec2, wl: number, rings = 4) => coneDirections(el.rotation, el.spread ?? (el.kind === 'led' ? 10 : 12), rings)
     .map((dir) => ({ origin: v3(p.x, p.y, 0), dir, wavelength: wl, intensity: 1 }));
-  if (el.kind === 'led') return mk(toWorld(el, vec(LED_SIZE / 2 + 0.02, 0)), el.wavelength ?? DEFAULT_WAVELENGTH);
+  if (el.kind === 'led') {
+    const wls = el.spectrum ?? [el.wavelength ?? DEFAULT_WAVELENGTH];
+    return wls.flatMap((wl) => mk(toWorld(el, vec(LED_SIZE / 2 + 0.02, 0)), wl, wls.length > 1 ? 3 : 4));
+  }
   if (el.kind === 'object') {
     const H = el.len ?? OBJECT_HEIGHT;
     return OBJECT_POINTS.flatMap((pt) => mk(toWorld(el, vec(0, pt.f * H)), pt.wl));
@@ -220,7 +272,7 @@ export function buildOpticalScene(
     const first = segments.length;
     switch (el.kind) {
       case 'laser':
-        sources.push(laserSource(el));
+        sources.push(...laserSources(el));
         segments.push(...polygonSegments(elementPolygon(el)!, 'absorber', el.id));
         break;
       case 'mirror': {
@@ -276,11 +328,55 @@ export function buildOpticalScene(
           ...polygonSegments(elementPolygon(el)!, 'interface', el.id, el.index ?? DEFAULT_GLASS_INDEX),
         );
         break;
+      case 'dprism':
+        segments.push(...polygonSegments(elementPolygon(el)!, 'interface', el.id, el.index ?? FLINT));
+        break;
+      case 'filter':
+      case 'grating':
+      case 'polariser': {
+        const [a, b] = plateEnds(el, el.len ?? PLATE_LENGTH);
+        segments.push({
+          a, b, kind: el.kind, ownerId: el.id, normal: fromAngle(deg2rad(el.rotation)),
+          band: el.band, period: el.period, axis: el.pol ?? 0,
+        });
+        break;
+      }
+      case 'dichroic': {
+        const [a, b] = mirrorEnds(el);
+        segments.push({ a, b, kind: 'dichroic', ownerId: el.id, normal: normalize(perp(sub(b, a))), band: el.band });
+        break;
+      }
+      case 'slm': {
+        // Reflective, so it lies along its local x like a mirror; its program adds a grating.
+        const [a, b] = mirrorEnds(el);
+        const prog = SLM_PROGRAMS[el.program ?? 0] ?? SLM_PROGRAMS[0];
+        segments.push({
+          a, b, kind: 'slm', ownerId: el.id, normal: normalize(perp(sub(b, a))), period: prog.period ?? 1e9, orders: prog.orders,
+        });
+        break;
+      }
+      case 'slits': {
+        // A plate with a tiny opening in the middle; light through it carries the slit pattern.
+        const len = el.len ?? PLATE_LENGTH * 2;
+        const g = SLIT_OPENING / 2;
+        const normal = fromAngle(deg2rad(el.rotation));
+        for (const [y0, y1] of [[-len / 2, -g], [g, len / 2]]) {
+          segments.push({ a: toWorld(el, vec(0, y0)), b: toWorld(el, vec(0, y1)), kind: 'absorber', ownerId: el.id, normal });
+        }
+        segments.push({
+          a: toWorld(el, vec(0, -g)), b: toWorld(el, vec(0, g)), kind: 'slits', ownerId: el.id, normal,
+          slits: { count: el.slitCount ?? 2, width: el.slitWidth ?? 5, sep: el.slitSep ?? 20 },
+        });
+        break;
+      }
       case 'target':
-        circles.push({ c: vec(el.x, el.y), r: el.r ?? TARGET_RADIUS, kind: 'target', ownerId: el.id, minPower: el.minPower });
+        circles.push({
+          c: vec(el.x, el.y), r: el.r ?? TARGET_RADIUS, kind: 'target', ownerId: el.id, minPower: el.minPower,
+          needs: el.needs, forbid: el.forbid,
+        });
         break;
       case 'ring':
-        circles.push({ c: vec(el.x, el.y), r: el.r ?? RING_RADIUS, kind: 'sensor', ownerId: el.id });
+        circles.push({ c: vec(el.x, el.y), r: el.r ?? RING_RADIUS, kind: 'sensor', ownerId: el.id, needs: el.needs, forbid: el.forbid });
         break;
     }
     // Vertical size (for the 3D view and 3D cone rays; the 2D physics ignores it).
@@ -297,7 +393,14 @@ export function verticalExtent(el: ElementState): { hMin?: number; hMax?: number
     case 'mirror': return { disk: MIRROR_LENGTH / 2 };
     case 'splitter': return { hMin: -HALF_HEIGHT.splitter, hMax: HALF_HEIGHT.splitter };
     case 'block':
-    case 'prism': return { hMin: -HALF_HEIGHT.glass, hMax: HALF_HEIGHT.glass };
+    case 'prism':
+    case 'dprism': return { hMin: -HALF_HEIGHT.glass, hMax: HALF_HEIGHT.glass };
+    case 'filter':
+    case 'polariser':
+    case 'dichroic': return { disk: PLATE_LENGTH / 2 };
+    case 'grating':
+    case 'slm': return { hMin: -0.4, hMax: 0.4 };
+    case 'slits': return { hMin: -HALF_HEIGHT.aperture, hMax: HALF_HEIGHT.aperture };
     case 'screen': return { hMin: -HALF_HEIGHT.screen, hMax: HALF_HEIGHT.screen };
     case 'aperture': return { hMin: -HALF_HEIGHT.aperture, hMax: HALF_HEIGHT.aperture };
     case 'laser': return { hMin: -HALF_HEIGHT.laser, hMax: HALF_HEIGHT.laser };
@@ -311,7 +414,14 @@ export function footprint(el: ElementState): number {
   switch (el.kind) {
     case 'mirror':
     case 'splitter': return 0.35;
-    case 'prism': return 0.55;
+    case 'prism':
+    case 'dprism': return 0.55;
+    case 'dichroic':
+    case 'slm': return 0.35;
+    case 'filter':
+    case 'grating':
+    case 'polariser':
+    case 'slits': return 0.3;
     case 'block':
     case 'wall': return Math.min(el.w ?? 1, el.h ?? 1) / 2;
     case 'target': return el.r ?? TARGET_RADIUS;

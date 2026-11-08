@@ -5,7 +5,7 @@ import { audio } from './audio/audio';
 import { TRACKS } from './audio/music';
 import { LEVELS } from './content/levels';
 import { TEXT } from './content/text';
-import { AXIS_HEIGHT, ElementState, LED_SIZE, PlaceableKind, buildOpticalScene, coneSources } from './game/elements';
+import { AXIS_HEIGHT, ElementState, LED_SIZE, PlaceableKind, SLM_PROGRAMS, buildOpticalScene, coneSources } from './game/elements';
 import { trace3d } from './physics/trace3d';
 import { LevelSession } from './game/session';
 import { deg2rad } from './physics/vec';
@@ -166,7 +166,7 @@ export class App {
     this.select(null);
     for (const v of this.views.values()) this.removeView(v);
     this.views.clear();
-    this.beams.show({ segments: [], interactions: [], hitTargets: new Set(), hitSensors: new Set(), power: new Map(), screenHits: [] });
+    this.beams.show({ segments: [], interactions: [], hitTargets: new Set(), hitSensors: new Set(), power: new Map(), powerByWl: new Map(), screenHits: [] });
     this.beams.showCones([]);
     if (this.completionTimer) clearTimeout(this.completionTimer);
   }
@@ -175,6 +175,12 @@ export class App {
     for (const v of this.views.values()) this.removeView(v);
     this.views.clear();
     if (this.session) this.refresh(true);
+  }
+
+  /** Recreate one element's 3D view (e.g. after an SLM program change); refresh() builds it again. */
+  private rebuildView(id: string): void {
+    const v = this.views.get(id);
+    if (v) { this.removeView(v); this.views.delete(id); }
   }
 
   /** Remove a view from the scene, including any HTML labels (CSS2D) inside it. */
@@ -228,7 +234,8 @@ export class App {
     for (const el of s.elements) {
       if (el.kind !== 'screen') continue;
       const image = ev.images.find((i) => i.goal.screen === el.id);
-      this.views.get(el.id)?.showScreen?.(ev.trace.screenHits.filter((h) => h.ownerId === el.id), image);
+      const pattern = ev.patterns.find((p) => p.goal.screen === el.id);
+      this.views.get(el.id)?.showScreen?.(ev.trace.screenHits.filter((h) => h.ownerId === el.id), image, pattern);
     }
     this.hud.setInventory(s.level, (k) => s.remaining(k), this.placingKind);
     this.hud.setPhysics(this.beams.overlayOn, ev.trace.interactions, this.lensInfo());
@@ -272,14 +279,21 @@ export class App {
     this.handle.visible = !!el.rotatable;
     this.gizmo.position.set(el.x, 0, -el.y);
     this.gizmo.rotation.y = deg2rad(el.rotation);
-    const name = TEXT.elementNames[el.kind];
+    const name = el.label ?? TEXT.elementNames[el.kind];
     const parts = [`<b>${name}</b>`, `<span class="coords">(${el.x}, ${el.y})</span>`];
-    if (el.rotatable) parts.push(`<span class="angle">${fmtDeg(el.rotation)}</span>`);
+    if (el.kind === 'slm') parts.push(`<span class="angle">${SLM_PROGRAMS[el.program ?? 0].name}</span>`);
+    else if (el.rotatable) parts.push(`<span class="angle">${fmtDeg(el.rotation)}</span>`);
+    if (el.kind === 'polariser') parts.push(`axis ${el.pol ?? 0}°`);
+    if (el.kind === 'grating') parts.push(`d = ${el.period ?? 2} µm`);
+    if (el.kind === 'slits') {
+      parts.push(el.slitCount === 1 ? `single slit, a = ${el.slitWidth ?? 5} µm` : `double slit, d = ${el.slitSep ?? 20} µm`);
+    }
     if (el.kind === 'lens') parts.push(`f = ${(el.focal ?? 2).toFixed(1)}` + ((el.focal ?? 2) > 0 ? ' (converging)' : ' (diverging)'));
     if (el.kind === 'block' || el.kind === 'prism') parts.push(`n = ${typeof el.index === 'number' ? el.index.toFixed(2) : '1.50'}`);
     const tips: string[] = [];
     if (el.movable) tips.push('drag to move (Shift: fine)');
-    if (el.rotatable) tips.push('Q/E or scroll: rotate 5° · hold Shift: 1° steps');
+    if (el.kind === 'slm') tips.push('Q/E or scroll: change the program');
+    else if (el.rotatable) tips.push('Q/E or scroll: rotate 5° · hold Shift: 1° steps');
     if (el.placed) tips.push('right-click to remove');
     this.hud.setSelection(`${parts.join(' · ')}<small>${tips.join(' · ')}</small>`);
   }
@@ -324,6 +338,13 @@ export class App {
   private rotateSelected(delta: number): void {
     const el = this.selectedId ? this.session?.get(this.selectedId) : undefined;
     if (!el || !el.rotatable) return;
+    if (el.kind === 'slm') {
+      // SLMs don't turn: Q/E (or scroll) steps through their programs instead.
+      const n = SLM_PROGRAMS.length;
+      const next = ((((el.program ?? 0) + (delta > 0 ? 1 : -1)) % n) + n) % n;
+      if (this.session!.setProgram(el.id, next)) { audio.tick(); this.rebuildView(el.id); this.refresh(); }
+      return;
+    }
     const step = Math.abs(delta);
     const target = step > 1 ? Math.round((el.rotation + delta) / step) * step : el.rotation + delta;
     if (this.session!.rotate(el.id, target)) { audio.tick(); this.refresh(); }

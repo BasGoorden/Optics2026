@@ -7,10 +7,13 @@
  * intensity, and receivers add up the power of all rays that reach them.
  * Glass shapes must be convex and must not overlap; outside glass is air (n = 1).
  */
+import { Band, DEFAULT_ORDERS, gratingSin, inBand, receiverLit } from './colour';
 import { RefractiveIndex, fresnelReflectance, indexAt, reflect, refract } from './optics';
 import { Vec2, add, cross, dot, normalize, scale, sub } from './vec';
 
-export type SegmentKind = 'mirror' | 'absorber' | 'interface' | 'splitter' | 'lens' | 'screen';
+export type SegmentKind =
+  | 'mirror' | 'absorber' | 'interface' | 'splitter' | 'lens' | 'screen' | 'filter' | 'dichroic' | 'grating'
+  | 'polariser' | 'slm' | 'slits';
 
 export interface Segment {
   a: Vec2;
@@ -32,6 +35,21 @@ export interface Segment {
   disk?: number;
   /** For 'interface': anti-reflection coated (no Fresnel reflection), like the faces of a cube beam splitter. */
   ar?: boolean;
+  /** For 'filter': the band that passes. For 'dichroic': the band that is reflected. */
+  band?: Band;
+  /** For 'grating': line spacing d in µm. The grating's normal is its axis. */
+  period?: number;
+  orders?: { m: number; eff: number }[];
+  /** For 'polariser': transmission axis in degrees. */
+  axis?: number;
+  /** For 'slits': number of slits, slit width and separation (µm). */
+  slits?: SlitSpec;
+}
+
+export interface SlitSpec {
+  count: number;
+  width: number;
+  sep: number;
 }
 
 export interface Circle {
@@ -42,6 +60,9 @@ export interface Circle {
   ownerId: string;
   /** Total power needed to count as lit (default: the detect threshold). */
   minPower?: number;
+  /** Colour receivers: power needed per band, and bands that must stay dark. */
+  needs?: { band: Band; min: number }[];
+  forbid?: Band[];
 }
 
 export interface Bounds {
@@ -66,6 +87,8 @@ export interface BeamSource {
   ownerId: string;
   /** Object point this ray comes from (for imaging on screens). */
   group?: string;
+  /** Polarisation angle in degrees; null or undefined = unpolarised. */
+  pol?: number | null;
 }
 
 export interface BeamSegment {
@@ -80,7 +103,8 @@ export interface BeamSegment {
 }
 
 export type InteractionType =
-  'reflect' | 'refract' | 'tir' | 'split' | 'lens' | 'screen' | 'absorb' | 'target' | 'escape';
+  | 'reflect' | 'refract' | 'tir' | 'split' | 'lens' | 'screen' | 'filter' | 'dichroic' | 'grating'
+  | 'polariser' | 'slm' | 'slits' | 'absorb' | 'target' | 'escape';
 
 export interface Interaction {
   type: InteractionType;
@@ -103,6 +127,14 @@ export interface Interaction {
   focal?: number;
   /** Refraction at an anti-reflection coated surface. */
   ar?: boolean;
+  /** Colour of the ray (nm). */
+  wavelength?: number;
+  /** Grating: line spacing (µm). */
+  period?: number;
+  /** Polariser: light polarisation before, axis, and the fraction transmitted. */
+  polIn?: number | null;
+  axis?: number;
+  transmitted?: number;
 }
 
 /** Where a ray lands on a screen. */
@@ -114,6 +146,8 @@ export interface ScreenHit {
   intensity: number;
   wavelength: number;
   point: Vec2;
+  /** Light that came through slits: the slit spec and the slits-to-screen distance L. */
+  pattern?: SlitSpec & { L: number };
 }
 
 export interface TraceResult {
@@ -123,6 +157,8 @@ export interface TraceResult {
   hitSensors: Set<string>;
   /** Total power arriving at each target and sensor. */
   power: Map<string, number>;
+  /** Power per wavelength at each target and sensor (for colour receivers). */
+  powerByWl: Map<string, Map<number, number>>;
   screenHits: ScreenHit[];
 }
 
@@ -189,6 +225,20 @@ export function thinLens(d: Vec2, p: Vec2, s: Segment): { dir: Vec2; h: number }
   return { dir: normalize(add(axis, scale(t, slope))), h };
 }
 
+/** Directions and efficiencies of the diffraction orders leaving a transmission grating. */
+export function gratingOrders(d: Vec2, s: Segment, wavelength: number): { m: number; dir: Vec2; eff: number }[] {
+  const t = normalize(sub(s.b, s.a));
+  const axis = dot(d, s.normal) >= 0 ? s.normal : scale(s.normal, -1);
+  const sinIn = dot(d, t);
+  const out: { m: number; dir: Vec2; eff: number }[] = [];
+  for (const o of s.orders ?? DEFAULT_ORDERS) {
+    const sm = gratingSin(sinIn, o.m, wavelength, s.period ?? 2);
+    if (sm === null) continue;
+    out.push({ m: o.m, eff: o.eff, dir: add(scale(axis, Math.sqrt(1 - sm * sm)), scale(t, sm)) });
+  }
+  return out;
+}
+
 export interface TraceOptions {
   /** Maximum surface interactions along one ray (stops infinite mirror loops). */
   maxInteractions?: number;
@@ -210,6 +260,9 @@ interface Ray {
   intensity: number;
   /** Intensity the original source ray started with. */
   start: number;
+  pol: number | null;
+  /** Set after passing slits: the slit spec and where the slits are. */
+  pattern?: SlitSpec & { from: Vec2 };
   wavelength: number;
   group: string | undefined;
   lastSeg: number;
@@ -232,25 +285,31 @@ export function traceScene(
     hitTargets: new Set(),
     hitSensors: new Set(),
     power: new Map(),
+    powerByWl: new Map(),
     screenHits: [],
   };
-  const addPower = (id: string, p: number) => result.power.set(id, (result.power.get(id) ?? 0) + p);
+  const addPower = (id: string, p: number, wl: number) => {
+    result.power.set(id, (result.power.get(id) ?? 0) + p);
+    const m = result.powerByWl.get(id) ?? new Map<number, number>();
+    m.set(wl, (m.get(wl) ?? 0) + p);
+    result.powerByWl.set(id, m);
+  };
 
   // Main beams first (depth-first), so the strongest paths are traced before the limit.
   const queue: Ray[] = sources
     .map((s): Ray => ({
-      o: s.origin, d: s.dir, n: 1, intensity: s.intensity, start: s.intensity,
+      o: s.origin, d: s.dir, n: 1, intensity: s.intensity, start: s.intensity, pol: s.pol ?? null,
       wavelength: s.wavelength, group: s.group, lastSeg: -1, depth: 0,
     }))
     .reverse();
 
   while (queue.length && result.segments.length < maxSegments) {
     const ray = queue.pop()!;
-    let { o, d, n, intensity } = ray;
+    let { o, d, n, intensity, pol, pattern } = ray;
     let lastSeg = ray.lastSeg;
     const wl = ray.wavelength;
     const spawn = (r: Pick<Ray, 'o' | 'd' | 'n' | 'intensity' | 'lastSeg' | 'depth'>) => {
-      if (r.intensity >= minIntensity) queue.push({ ...r, start: ray.start, wavelength: wl, group: ray.group });
+      if (r.intensity >= minIntensity) queue.push({ ...r, start: ray.start, wavelength: wl, group: ray.group, pol, pattern });
     };
     const sensed = new Set<string>();
 
@@ -286,13 +345,13 @@ export function traceScene(
       for (const c of scene.circles) {
         if (c.kind === 'sensor' && !sensed.has(c.ownerId) && segmentTouchesCircle(o, p, c.c, c.r)) {
           sensed.add(c.ownerId);
-          addPower(c.ownerId, intensity);
+          addPower(c.ownerId, intensity, wl);
         }
       }
 
       if (bestCircle >= 0) {
         const c = scene.circles[bestCircle];
-        addPower(c.ownerId, intensity);
+        addPower(c.ownerId, intensity, wl);
         result.interactions.push({ type: 'target', point: p, ownerId: c.ownerId, intensity, rel });
         break;
       }
@@ -307,7 +366,7 @@ export function traceScene(
       const facing = dot(d, s.normal) < 0 ? s.normal : scale(s.normal, -1);
       const cosI = Math.min(1, -dot(d, facing));
       const thetaI = Math.acos(cosI);
-      const base = { point: p, ownerId: s.ownerId, normal: facing, thetaI, intensity, rel };
+      const base = { point: p, ownerId: s.ownerId, normal: facing, thetaI, intensity, rel, wavelength: wl };
 
       if (s.kind === 'absorber') {
         result.interactions.push({ type: 'absorb', ...base });
@@ -316,7 +375,10 @@ export function traceScene(
       if (s.kind === 'screen') {
         const center = scale(add(s.a, s.b), 0.5);
         const pos = dot(sub(p, center), normalize(sub(s.b, s.a)));
-        result.screenHits.push({ ownerId: s.ownerId, group: ray.group, pos, intensity, wavelength: wl, point: p });
+        result.screenHits.push({
+          ownerId: s.ownerId, group: ray.group, pos, intensity, wavelength: wl, point: p,
+          pattern: pattern ? { count: pattern.count, width: pattern.width, sep: pattern.sep, L: Math.hypot(p.x - pattern.from.x, p.y - pattern.from.y) } : undefined,
+        });
         result.interactions.push({ type: 'screen', ...base });
         break;
       }
@@ -334,6 +396,45 @@ export function traceScene(
         const { dir, h } = thinLens(d, p, s);
         d = dir;
         result.interactions.push({ type: 'lens', ...base, h, focal: s.focal });
+      } else if (s.kind === 'filter') {
+        // Colour filter: its band passes straight through, everything else is absorbed.
+        const pass = !!s.band && inBand(wl, s.band);
+        result.interactions.push({ type: 'filter', ...base });
+        if (!pass) break;
+      } else if (s.kind === 'dichroic') {
+        // Dichroic mirror: reflects its band, transmits the rest.
+        if (s.band && inBand(wl, s.band)) d = reflect(d, facing);
+        result.interactions.push({ type: 'dichroic', ...base });
+      } else if (s.kind === 'polariser') {
+        // Malus's law: I = I₀·cos²(θ) for polarised light, I₀/2 for unpolarised light.
+        const axis = s.axis ?? 0;
+        const T = pol === null ? 0.5 : Math.cos(((pol - axis) * Math.PI) / 180) ** 2;
+        result.interactions.push({ type: 'polariser', ...base, polIn: pol, axis, transmitted: T });
+        intensity *= T;
+        pol = axis;
+        if (intensity < 1e-6) break;
+      } else if (s.kind === 'slits') {
+        // Light through the slits now carries the diffraction pattern to the screen.
+        result.interactions.push({ type: 'slits', ...base });
+        if (s.slits) pattern = { ...s.slits, from: p };
+      } else if (s.kind === 'slm') {
+        // Spatial light modulator: a mirror with a programmable phase grating on it.
+        const r = reflect(d, facing);
+        const orders = gratingOrders(r, s, wl);
+        result.interactions.push({ type: 'slm', ...base, period: s.period });
+        if (!orders.length) break;
+        for (const o2 of orders.slice(1)) spawn({ o: p, d: o2.dir, n, intensity: intensity * o2.eff, lastSeg: bestSeg, depth: step + 1 });
+        d = orders[0].dir;
+        intensity *= orders[0].eff;
+      } else if (s.kind === 'grating') {
+        const orders = gratingOrders(d, s, wl);
+        result.interactions.push({ type: 'grating', ...base, period: s.period });
+        const zero = orders.find((o) => o.m === 0);
+        for (const o of orders) {
+          if (o.m !== 0) spawn({ o: p, d: o.dir, n, intensity: intensity * o.eff, lastSeg: bestSeg, depth: step + 1 });
+        }
+        if (!zero) break;
+        intensity *= zero.eff;
       } else {
         const glassN = indexAt(s.index ?? 1.5, wl);
         const entering = dot(d, s.normal) < 0;
@@ -362,8 +463,9 @@ export function traceScene(
   }
 
   for (const c of scene.circles) {
-    const lit = (result.power.get(c.ownerId) ?? 0) >= (c.minPower ?? detect) - 1e-9;
-    if (lit) (c.kind === 'target' ? result.hitTargets : result.hitSensors).add(c.ownerId);
+    if (receiverLit(c, result.powerByWl.get(c.ownerId), detect)) {
+      (c.kind === 'target' ? result.hitTargets : result.hitSensors).add(c.ownerId);
+    }
   }
   return result;
 }
