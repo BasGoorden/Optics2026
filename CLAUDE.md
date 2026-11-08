@@ -14,10 +14,29 @@ checkboxes up to date as work is finished. If a design decision changes, update 
 - Optional maths: physics overlay toggle; guide robot "Lumen" gives hints and explanations.
 - SFX + ambient audio with mute.
 
-## Tech stack (planned)
-- Vite + TypeScript + Three.js (plus `three/examples` postprocessing for bloom)
+## Tech stack
+- Vite + TypeScript + Three.js (`three/addons` for OrbitControls, bloom, CSS2D labels)
 - Vitest for unit tests
 - Beams are traced in the horizontal table plane (2.5D), rendered in 3D
+
+## Commands
+- `npm run dev`: dev server at http://localhost:5173
+- `npm test`: physics tests plus a solvability test for every level
+- `npm run build`: type-check and production build to `dist/`
+
+## Code map
+- `src/physics/`: vec math, optics laws (`optics.ts`) and the 2D ray tracer (`trace.ts`)
+- `src/game/`: element geometry (`elements.ts`), level types/evaluation/stars (`level.ts`) and play state (`session.ts`)
+- `src/content/`: `levels.ts` (level geometry + all level text + known solutions) and `text.ts` (UI strings)
+- `src/render/`: `stage.ts` (renderer, bloom, lab, camera, quality), `elements.ts` (meshes), `beams.ts` (beams + overlay), `lumen.ts` (guide bot)
+- `src/ui/hud.ts`: all HTML UI. `src/audio/audio.ts`: synthesised WebAudio SFX. `src/save/progress.ts`: localStorage
+- `src/app.ts`: game controller (input, selection, placement, completion)
+
+## Conventions
+- Table coordinates: x right, y away from the player. World space = (x, height, -y). Rotation is in degrees, CCW.
+- Mirror rotation 0 means it lies along +x. Lasers fire along local +x.
+- Every level must include `solution` (2 stars) and `bonusSolution` (3 stars). `levels.test.ts` checks both.
+- In dev builds, `window.optics` exposes the App for browser testing (`debugScreen(x, y)` gives the screen position of a table point).
 
 ## Architecture rules
 - `src/physics/` is pure TypeScript with **no Three.js imports**. It contains the ray tracing, Snell's law,

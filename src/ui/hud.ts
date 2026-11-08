@@ -1,0 +1,326 @@
+/** HTML user interface on top of the 3D view. */
+import { CHAPTERS, LEVELS } from '../content/levels';
+import { TEXT } from '../content/text';
+import type { PlaceableKind } from '../game/elements';
+import type { Evaluation, LevelDef } from '../game/level';
+import type { Interaction } from '../physics/trace';
+import { rad2deg } from '../physics/vec';
+import type { Quality } from '../render/stage';
+import type { Settings } from '../save/progress';
+import { audio } from '../audio/audio';
+
+export interface HudCallbacks {
+  selectLevel(id: string): void;
+  backToMenu(): void;
+  toggleOverlay(): void;
+  hint(): void;
+  topView(): void;
+  toggleSound(): void;
+  reset(): void;
+  pickInventory(kind: PlaceableKind): void;
+  changeSettings(s: Partial<Settings>): void;
+  resetProgress(): void;
+  next(): void;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+};
+
+const ICONS: Record<string, string> = {
+  mirror: '<svg viewBox="0 0 40 40"><line x1="8" y1="32" x2="32" y2="8" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><line x1="11" y1="35" x2="35" y2="11" stroke="currentColor" stroke-width="1.5" opacity=".5"/></svg>',
+  prism: '<svg viewBox="0 0 40 40"><polygon points="8,32 8,8 32,8" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+  block: '<svg viewBox="0 0 40 40"><rect x="12" y="6" width="16" height="28" fill="none" stroke="currentColor" stroke-width="3" rx="2"/></svg>',
+};
+
+const star = (on: boolean) => `<span class="star ${on ? 'on' : ''}">★</span>`;
+const deg = (r?: number) => `${rad2deg(r ?? 0).toFixed(1)}°`;
+
+export class Hud {
+  private root: HTMLElement;
+  private menu = el('div', 'menu hidden');
+  private top = el('div', 'topbar hidden');
+  private goals = el('div', 'goals hidden');
+  private tray = el('div', 'tray hidden');
+  private bubble = el('div', 'lumen-bubble hidden');
+  private physics = el('div', 'physics-panel hidden');
+  private selection = el('div', 'selection-info hidden');
+  private modal = el('div', 'modal-backdrop hidden');
+  private settingsPanel = el('div', 'settings-panel hidden');
+  private toastEl = el('div', 'toast');
+  private lines: string[] = [];
+  private typing: number | null = null;
+  private onLinesDone: (() => void) | null = null;
+
+  constructor(container: HTMLElement, private cb: HudCallbacks, private getSettings: () => Settings) {
+    this.root = el('div', 'hud');
+    this.root.append(this.top, this.goals, this.tray, this.bubble, this.physics, this.selection, this.menu, this.modal, this.settingsPanel, this.toastEl);
+    container.appendChild(this.root);
+    this.buildTopbar();
+    this.bubble.addEventListener('click', () => this.advance());
+  }
+
+  // ---------- Menu ----------
+
+  showMenu(stars: (id: string) => number): void {
+    const unlockAll = this.getSettings().unlockAll;
+    this.menu.innerHTML = '';
+    const head = el('div', 'menu-head', `<h1>${TEXT.gameTitle}</h1><p>${TEXT.tagline}</p>`);
+    this.menu.appendChild(head);
+    for (const ch of CHAPTERS) {
+      const sec = el('section', 'chapter');
+      sec.appendChild(el('h2', '', `<span>${TEXT.chapter} ${ch.id}</span> ${ch.title}`));
+      const grid = el('div', 'level-grid');
+      const levels = LEVELS.filter((l) => l.chapter === ch.id);
+      levels.forEach((lvl, i) => {
+        const prev = i > 0 ? levels[i - 1] : null;
+        const unlocked = unlockAll || !prev || stars(prev.id) > 0;
+        const s = stars(lvl.id);
+        const card = el('button', `level-card ${unlocked ? '' : 'locked'} ${s > 0 ? 'done' : ''}`);
+        card.innerHTML = `<div class="lc-id">${lvl.id}</div><div class="lc-title">${lvl.title}</div><div class="lc-stars">${star(s >= 1)}${star(s >= 2)}${star(s >= 3)}</div>`;
+        if (unlocked) {
+          card.addEventListener('click', () => { audio.click(); this.cb.selectLevel(lvl.id); });
+        } else {
+          card.title = TEXT.locked;
+          card.disabled = true;
+        }
+        grid.appendChild(card);
+      });
+      sec.appendChild(grid);
+      this.menu.appendChild(sec);
+    }
+    const help = el('div', 'controls-help');
+    help.innerHTML = TEXT.controls.map(([k, v]) => `<div><kbd>${k}</kbd> ${v}</div>`).join('');
+    this.menu.appendChild(help);
+    const settingsBtn = el('button', 'btn ghost', `⚙ ${TEXT.buttons.settings}`);
+    settingsBtn.addEventListener('click', () => this.toggleSettings());
+    this.menu.appendChild(settingsBtn);
+
+    this.menu.classList.remove('hidden');
+    for (const e of [this.top, this.goals, this.tray, this.physics, this.selection]) e.classList.add('hidden');
+    this.hideModal();
+    this.say([TEXT.menuLumen]);
+  }
+
+  // ---------- In-level ----------
+
+  enterLevel(level: LevelDef): void {
+    this.menu.classList.add('hidden');
+    this.settingsPanel.classList.add('hidden');
+    this.top.classList.remove('hidden');
+    this.goals.classList.remove('hidden');
+    this.tray.classList.remove('hidden');
+    this.hideModal();
+    this.top.querySelector('.level-name')!.innerHTML = `<span>${level.id}</span> ${level.title}`;
+  }
+
+  private buildTopbar(): void {
+    const t = TEXT.buttons;
+    this.top.innerHTML = `
+      <button class="btn" data-a="levels">☰ ${t.levels}</button>
+      <div class="level-name"></div>
+      <div class="spacer"></div>
+      <button class="btn toggle" data-a="overlay" title="F">∠ ${t.overlay} <kbd>F</kbd></button>
+      <button class="btn" data-a="hint" title="H">💡 ${t.hint} <kbd>H</kbd></button>
+      <button class="btn toggle" data-a="top" title="T">⬒ ${t.topView} <kbd>T</kbd></button>
+      <button class="btn toggle" data-a="sound" title="M">♪ ${t.sound}</button>
+      <button class="btn" data-a="reset">↺ ${t.reset}</button>
+      <button class="btn" data-a="settings">⚙</button>`;
+    this.top.addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest('button')?.dataset.a;
+      if (!a) return;
+      audio.click();
+      if (a === 'levels') this.cb.backToMenu();
+      if (a === 'overlay') this.cb.toggleOverlay();
+      if (a === 'hint') this.cb.hint();
+      if (a === 'top') this.cb.topView();
+      if (a === 'sound') this.cb.toggleSound();
+      if (a === 'reset') this.cb.reset();
+      if (a === 'settings') this.toggleSettings();
+    });
+  }
+
+  setToggles(t: { overlay: boolean; sound: boolean; topView: boolean }): void {
+    this.top.querySelector('[data-a="overlay"]')!.classList.toggle('active', t.overlay);
+    this.top.querySelector('[data-a="sound"]')!.classList.toggle('active', t.sound);
+    this.top.querySelector('[data-a="top"]')!.classList.toggle('active', t.topView);
+  }
+
+  setGoals(level: LevelDef, ev: Evaluation): void {
+    const parOk = ev.placedCount <= level.par;
+    this.goals.innerHTML = `
+      <div class="goal ${ev.solved ? 'met' : ''}">${star(ev.solved)} ${TEXT.stars.solve}
+        <small>${ev.litTargets.length}/${ev.requiredTargets.length}</small></div>
+      <div class="goal ${ev.solved && parOk ? 'met' : ''} ${!parOk ? 'fail' : ''}">${star(ev.solved && parOk)} ${TEXT.stars.par(level.par)}</div>
+      <div class="goal ${ev.bonusMet ? 'met' : ''}">${star(ev.solved && ev.bonusMet)} ${level.bonus.description}</div>`;
+  }
+
+  setInventory(level: LevelDef, remaining: (k: PlaceableKind) => number, active: PlaceableKind | null): void {
+    const kinds = Object.keys(level.inventory) as PlaceableKind[];
+    this.tray.innerHTML = '';
+    this.tray.classList.toggle('empty', kinds.length === 0);
+    if (kinds.length === 0) {
+      this.tray.innerHTML = `<div class="tray-note">${TEXT.fixedNote}</div>`;
+      return;
+    }
+    for (const k of kinds) {
+      const n = remaining(k);
+      const b = el('button', `tray-item ${active === k ? 'active' : ''} ${n <= 0 ? 'empty' : ''}`);
+      b.innerHTML = `${ICONS[k]}<span>${TEXT.inventory[k]}</span><b>×${n}</b>`;
+      b.disabled = n <= 0;
+      b.addEventListener('click', () => this.cb.pickInventory(k));
+      this.tray.appendChild(b);
+    }
+  }
+
+  setSelection(text: string | null): void {
+    this.selection.classList.toggle('hidden', !text);
+    if (text) this.selection.innerHTML = text;
+  }
+
+  setPhysics(on: boolean, interactions: Interaction[]): void {
+    this.physics.classList.toggle('hidden', !on);
+    if (!on) return;
+    const rows = interactions
+      .filter((i) => i.type === 'reflect' || i.type === 'refract' || i.type === 'tir')
+      .slice(0, 8)
+      .map((it, idx) => {
+        if (it.type === 'reflect') {
+          return `<li><b>${idx + 1}. Reflection</b><code>θᵢ = θᵣ = ${deg(it.thetaI)}</code></li>`;
+        }
+        if (it.type === 'tir') {
+          const c = Math.asin((it.n2 ?? 1) / (it.n1 ?? 1.5));
+          return `<li><b>${idx + 1}. Total internal reflection</b><code>sin θc = ${it.n2?.toFixed(2)} / ${it.n1?.toFixed(2)} → θc = ${deg(c)}</code><code>θ = ${deg(it.thetaI)} &gt; θc: all light reflects</code></li>`;
+        }
+        return `<li><b>${idx + 1}. Refraction</b><code>${it.n1?.toFixed(2)} · sin ${deg(it.thetaI)} = ${it.n2?.toFixed(2)} · sin ${deg(it.thetaT)}</code><code>${((it.n1 ?? 1) * Math.sin(it.thetaI ?? 0)).toFixed(3)} = ${((it.n2 ?? 1) * Math.sin(it.thetaT ?? 0)).toFixed(3)}</code></li>`;
+      });
+    this.physics.innerHTML = `<h3>Physics overlay</h3>${rows.length ? `<ol>${rows.join('')}</ol>` : '<p>No surfaces hit yet. Put something in the beam!</p>'}<p class="muted">Angles are measured from the normal (dashed line).</p>`;
+  }
+
+  // ---------- Lumen ----------
+
+  say(lines: string[], onDone?: () => void): void {
+    this.lines = [...lines];
+    this.onLinesDone = onDone ?? null;
+    this.bubble.classList.remove('hidden');
+    this.showLine();
+  }
+
+  get talking(): boolean {
+    return !this.bubble.classList.contains('hidden');
+  }
+
+  private showLine(): void {
+    const line = this.lines.shift();
+    if (line === undefined) {
+      this.bubble.classList.add('hidden');
+      const done = this.onLinesDone;
+      this.onLinesDone = null;
+      done?.();
+      return;
+    }
+    const more = this.lines.length > 0;
+    this.bubble.innerHTML = `<div class="lumen-avatar"><i></i><i></i></div><div class="lumen-text"><div class="lumen-name">LUMEN</div><p></p><div class="lumen-more">${more ? 'Click to continue ▸' : 'Click to close ✕'}</div></div>`;
+    const p = this.bubble.querySelector('p')!;
+    if (this.typing) clearInterval(this.typing);
+    let i = 0;
+    this.typing = window.setInterval(() => {
+      i += 2;
+      p.textContent = line.slice(0, i);
+      if (i % 6 === 0) audio.talk();
+      if (i >= line.length) {
+        clearInterval(this.typing!);
+        this.typing = null;
+      }
+    }, 18);
+    p.dataset.full = line;
+  }
+
+  /** Next line (or finish the current one instantly). */
+  advance(): void {
+    const p = this.bubble.querySelector('p');
+    if (this.typing && p) {
+      clearInterval(this.typing);
+      this.typing = null;
+      p.textContent = p.dataset.full ?? '';
+      return;
+    }
+    this.showLine();
+  }
+
+  // ---------- Completion ----------
+
+  showComplete(level: LevelDef, stars: number, newBest: boolean, hasNext: boolean, lumenLine: string): void {
+    const ex = level.explanation;
+    this.modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-stars">${[1, 2, 3].map((i) => `<span class="big-star ${stars >= i ? 'on' : ''}" style="animation-delay:${i * 0.15}s">★</span>`).join('')}</div>
+        <div class="modal-lumen"><div class="lumen-avatar small"><i></i><i></i></div><span>${lumenLine}${newBest ? ' <em>New best!</em>' : ''}</span></div>
+        <h2>${ex.title}</h2>
+        <p>${ex.body}</p>
+        <details><summary>${TEXT.buttons.deeper}</summary><p>${ex.deeper}</p></details>
+        <div class="modal-actions">
+          ${stars < 3 ? `<button class="btn" data-a="replay">${TEXT.buttons.replay}</button>` : ''}
+          <button class="btn" data-a="keep">${TEXT.buttons.keep}</button>
+          ${hasNext ? `<button class="btn primary" data-a="next">${TEXT.buttons.next} ▸</button>` : `<button class="btn primary" data-a="levels">${TEXT.buttons.levels}</button>`}
+        </div>
+      </div>`;
+    this.modal.classList.remove('hidden');
+    this.modal.querySelectorAll('button').forEach((b) =>
+      b.addEventListener('click', () => {
+        audio.click();
+        const a = b.dataset.a;
+        this.hideModal();
+        if (a === 'next') this.cb.next();
+        if (a === 'levels') this.cb.backToMenu();
+        if (a === 'replay') this.cb.reset();
+      }),
+    );
+  }
+
+  hideModal(): void {
+    this.modal.classList.add('hidden');
+  }
+
+  get modalOpen(): boolean {
+    return !this.modal.classList.contains('hidden');
+  }
+
+  // ---------- Settings ----------
+
+  private toggleSettings(): void {
+    if (!this.settingsPanel.classList.contains('hidden')) {
+      this.settingsPanel.classList.add('hidden');
+      return;
+    }
+    const s = this.getSettings();
+    const T = TEXT.settings;
+    const opts = (Object.keys(T.qualityOptions) as Quality[])
+      .map((q) => `<option value="${q}" ${s.quality === q ? 'selected' : ''}>${T.qualityOptions[q]}</option>`).join('');
+    this.settingsPanel.innerHTML = `
+      <h3>${TEXT.buttons.settings}</h3>
+      <label>${T.quality}<select data-s="quality">${opts}</select></label>
+      <label class="check"><input type="checkbox" data-s="unlock" ${s.unlockAll ? 'checked' : ''}> ${T.unlockAll}</label>
+      <button class="btn danger" data-s="reset">${T.resetProgress}</button>
+      <button class="btn" data-s="close">${TEXT.buttons.close}</button>`;
+    this.settingsPanel.classList.remove('hidden');
+    this.settingsPanel.querySelector('select')!.addEventListener('change', (e) =>
+      this.cb.changeSettings({ quality: (e.target as HTMLSelectElement).value as Quality }));
+    this.settingsPanel.querySelector('[data-s="unlock"]')!.addEventListener('change', (e) =>
+      this.cb.changeSettings({ unlockAll: (e.target as HTMLInputElement).checked }));
+    this.settingsPanel.querySelector('[data-s="reset"]')!.addEventListener('click', () => {
+      if (confirm(T.confirmReset)) this.cb.resetProgress();
+    });
+    this.settingsPanel.querySelector('[data-s="close"]')!.addEventListener('click', () => this.settingsPanel.classList.add('hidden'));
+  }
+
+  toast(msg: string): void {
+    this.toastEl.textContent = msg;
+    this.toastEl.classList.remove('show');
+    void this.toastEl.offsetWidth;
+    this.toastEl.classList.add('show');
+  }
+}
