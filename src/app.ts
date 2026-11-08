@@ -99,6 +99,7 @@ export class App {
         progress.updateSettings(c);
         if (c.quality) { this.stage.setQuality(c.quality); this.rebuildViews(); }
         if (c.music) { audio.start(); audio.setTrack(c.music); this.syncToggles(); }
+        if (c.largeText !== undefined) this.hud.applyLargeText(c.largeText);
         if (c.unlockAll !== undefined && !this.session) this.showMenu();
       },
       resetProgress: () => { progress.resetAll(); this.showMenu(); },
@@ -116,6 +117,7 @@ export class App {
     // Browsers only allow audio after a user gesture: start on the first click anywhere.
     window.addEventListener('pointerdown', () => audio.start(), { capture: true });
     this.bindInput(this.stage.renderer.domElement);
+    this.hud.applyLargeText(progress.settings().largeText);
     this.showMenu();
   }
 

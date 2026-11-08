@@ -77,6 +77,8 @@ export interface Bonus {
   maxBlur?: number;
   /** Image magnification (negative = upside down) must lie in this range. */
   magnification?: { min: number; max: number };
+  /** All patterns must match their target within this relative tolerance. */
+  patternTolerance?: number;
 }
 
 export interface LevelSolution {
@@ -86,6 +88,8 @@ export interface LevelSolution {
   rotate?: Record<string, number>;
   /** Moves to apply to existing movable elements by id. */
   move?: Record<string, { x: number; y: number }>;
+  /** SLM programs to set, by id. */
+  program?: Record<string, number>;
 }
 
 export interface ImageResult {
@@ -199,7 +203,8 @@ export function evaluate(level: LevelDef, elements: ElementState[]): Evaluation 
     && Object.entries(b.minPower ?? {}).every(([id, p]) => (trace.power.get(id) ?? 0) >= p - 1e-9)
     && (b.maxBlur === undefined || images.every((i) => i.blur <= b.maxBlur!))
     && (b.magnification === undefined || images.every((i) => i.magnification >= b.magnification!.min
-      && i.magnification <= b.magnification!.max));
+      && i.magnification <= b.magnification!.max))
+    && (b.patternTolerance === undefined || patterns.every((p) => Math.abs(p.value - p.target) <= b.patternTolerance! * p.target));
 
   const placedCount = elements.filter((e) => e.placed).length;
   const stars = solved ? 1 + (placedCount <= level.par ? 1 : 0) + (bonusMet ? 1 : 0) : 0;
@@ -244,6 +249,7 @@ export const itemOf = (e: ElementState): PlaceableKind => e.item ?? e.kind;
 export function applySolution(level: LevelDef, sol: LevelSolution): ElementState[] {
   const els = level.elements.map((e) => ({
     ...e, rotation: sol.rotate?.[e.id] ?? e.rotation, ...(sol.move?.[e.id] ?? {}),
+    ...(sol.program?.[e.id] !== undefined ? { program: sol.program[e.id] } : {}),
   }));
   sol.place.forEach((p, i) => {
     const item = p.item ?? (p.kind as PlaceableKind);

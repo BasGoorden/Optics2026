@@ -49,22 +49,27 @@ Goal: a small part of the game that already looks and feels like the final game.
 - [x] Physics panel: lens equation with u, v and m for the first lens
 - [x] Levels 3-1 Focus!, 3-2 Parallel Universe (collimation), 3-3 Pinhole Camera, 3-4 Picture Perfect (two lens positions)
 - [x] Levels split into one file per chapter (src/content/levels/)
-- [ ] More levels: magnifying glass / virtual images (diverging lens, object inside f), two-lens telescope,
-      the eye and glasses (fixed "retina" screen, add a correcting lens), camera (lens + sensor in one box, focus by moving)
-- [ ] Optional: lens rotation off-axis puzzles, iris (adjustable aperture) to trade brightness vs sharpness
+- [x] Levels 3-5 Right Side Up (two-lens relay, upright image), 3-6 Glasses (nearsighted eye), 3-7 Say Cheese (camera focus)
+- [ ] Ideas: magnifying glass / virtual images, telescope with angular magnification, adjustable iris
 
 ## Milestone 4 — Colour & dispersion
-- [ ] Wavelength-coloured beams (renderer already colours by wavelength), white light splitting,
-      Cauchy dispersion (`indexAt` already supports it)
-- [ ] Prisms, colour filters, coloured LEDs, colour-specific targets, rainbow level
-- [ ] Diffraction gratings as colour separators (d·sin θ = m·λ)
+- [x] White light (spectrum of 6 wavelengths), white beams drawn white (colours merge on shared paths)
+- [x] Dense flint prism with Cauchy dispersion, colour filters, dichroic mirrors, diffraction gratings (d·sin θ = m·λ, 2D + 3D)
+- [x] Colour receivers: needed bands and forbidden bands
+- [x] Levels 4-1 Rainbow Maker, 4-2 Colour Filters, 4-3 Mixing Colours (splitter vs dichroic), 4-4 Spectrometer
+- [ ] Ideas: coloured LEDs in levels, subtractive filter stacks, rainbow in a water drop
 
-## Milestone 5 — Wave optics
-- [ ] Screen element with shader intensity patterns
-- [ ] Double slit, grating, single slit, thin film, polarisers (Malus's law)
-- [ ] Spatial light modulators: paintable pixel element that steers/shapes the beam (beam-steering puzzles, holography-lite)
+## Milestone 5 — Waves & polarisation
+- [x] Slit plates (single/double) carry their pattern to screens; screens draw the real intensity
+      pattern sinc²·cos² on a dark patch with goal ticks; pattern goals (fringe spacing / central width)
+- [x] Polarisation carried per ray, polarisers with Malus's law (incl. the three-polariser effect)
+- [x] Spatial light modulator: programmable reflective phase grating (blazed ramps, binary split), Q/E cycles programs
+- [x] Levels 5-1 Double Slit, 5-2 Single Slit, 5-3 Three Polarisers, 5-4 Beam Steering
+- [ ] Not done: thin-film interference (anti-reflection coating level), holography-style SLM patterns
 
 ## Milestone 6 — Release
-- [ ] Main menu polish, settings, credits, accessibility pass (contrast, colour-blind safe hints)
-- [ ] Hosting (note: GitHub Pages from a *private* repo needs a paid GitHub plan;
-      alternatives: make repo public, or Netlify/Cloudflare Pages)
+- [x] Credits, large-text option for projectors, chapter subtitles, colour receivers labelled with colour names
+      and "lit/dark" text (not colour alone)
+- [ ] Real playtest with students; performance check on a weak laptop and on a projector
+- [ ] Hosting: needs a decision. GitHub Pages from a *private* repo needs a paid GitHub plan;
+      alternatives: make the repo public, or Netlify/Cloudflare Pages

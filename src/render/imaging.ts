@@ -294,7 +294,8 @@ function patternPlane(screen: THREE.Group, hit: ScreenHit, len: number, H: numbe
   const side = Math.sign(local.x) || -1;
   const plane = new THREE.Mesh(
     new THREE.PlaneGeometry(len, H * 0.9),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, toneMapped: false, depthWrite: false }),
+    // Opaque: the pattern is shown on a dark patch, like a screen in a darkened lab, so faint fringes stay visible.
+    new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
   );
   // Plane in the screen's y–height plane (local z/y), facing the side the light comes from.
   plane.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;

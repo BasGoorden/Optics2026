@@ -43,6 +43,9 @@ checkboxes up to date as work is finished. If a design decision changes, update 
 - Every level must include `solution` (2 stars) and `bonusSolution` (3 stars). `levels.test.ts` checks both.
 - Beams branch (splitters, Fresnel reflections). Receivers and rings add up the power of all rays reaching them and need ≥ 10% by default (or the target's `minPower`).
 - Level ids are save keys: if you renumber levels, add a migration in `progress.ts`.
+- Colour: rays carry a wavelength (white sources emit `WHITE`); `physics/colour.ts` has bands, filters/dichroics, gratings and colour receivers (`needs`/`forbid`).
+- Waves: rays carry polarisation (Malus at polarisers); light through `slits` carries a pattern spec to screens, where `patternSize` gives Δy = λL/(1000·d) or W = 2λL/(1000·a) (λ nm, d/a µm). SLM programs are in `SLM_PROGRAMS`; Q/E cycles them.
+- Inventory items are strings: standard ones in `ITEM_DEFAULTS` (level.ts), level-specific ones via `templates` (with `kind` and `label`).
 - In dev builds, `window.opticsAudio` exposes the audio engine, and `window.optics` exposes the App for browser testing (`debugScreen(x, y)` gives the screen position of a table point).
 
 ## Architecture rules

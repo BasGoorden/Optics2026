@@ -133,12 +133,12 @@ export const SLIT_OPENING = 0.1;
 /** SLM programs the player cycles through (Q/E). Blazed ramps send light into one order; binary gratings split it. */
 export const SLM_PROGRAMS: { name: string; period?: number; orders: { m: number; eff: number }[] }[] = [
   { name: 'Flat (mirror)', orders: [{ m: 0, eff: 1 }] },
-  { name: 'Ramp ↑ 6 µm', period: 6, orders: [{ m: 1, eff: 0.95 }] },
-  { name: 'Ramp ↑ 3 µm', period: 3, orders: [{ m: 1, eff: 0.95 }] },
-  { name: 'Ramp ↑ 2 µm', period: 2, orders: [{ m: 1, eff: 0.95 }] },
-  { name: 'Ramp ↓ 6 µm', period: 6, orders: [{ m: -1, eff: 0.95 }] },
-  { name: 'Ramp ↓ 3 µm', period: 3, orders: [{ m: -1, eff: 0.95 }] },
-  { name: 'Ramp ↓ 2 µm', period: 2, orders: [{ m: -1, eff: 0.95 }] },
+  { name: 'Ramp + 6 µm', period: 6, orders: [{ m: 1, eff: 0.95 }] },
+  { name: 'Ramp + 3 µm', period: 3, orders: [{ m: 1, eff: 0.95 }] },
+  { name: 'Ramp + 2 µm', period: 2, orders: [{ m: 1, eff: 0.95 }] },
+  { name: 'Ramp − 6 µm', period: 6, orders: [{ m: -1, eff: 0.95 }] },
+  { name: 'Ramp − 3 µm', period: 3, orders: [{ m: -1, eff: 0.95 }] },
+  { name: 'Ramp − 2 µm', period: 2, orders: [{ m: -1, eff: 0.95 }] },
   { name: 'Split ± 3 µm', period: 3, orders: [{ m: 1, eff: 0.4 }, { m: -1, eff: 0.4 }] },
   { name: 'Split ± 2 µm', period: 2, orders: [{ m: 1, eff: 0.4 }, { m: -1, eff: 0.4 }] },
 ];

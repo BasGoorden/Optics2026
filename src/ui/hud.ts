@@ -79,7 +79,7 @@ export class Hud {
 
   constructor(container: HTMLElement, private cb: HudCallbacks, private getSettings: () => Settings) {
     this.root = el('div', 'hud');
-    this.root.append(this.top, this.goals, this.tray, this.bubble, this.physics, this.selection, this.menu, this.modal, this.settingsPanel, this.toastEl);
+    this.root.append(this.top, this.goals, this.tray, this.physics, this.selection, this.menu, this.bubble, this.modal, this.settingsPanel, this.toastEl);
     container.appendChild(this.root);
     this.buildTopbar();
     this.bubble.addEventListener('click', () => this.advance());
@@ -94,7 +94,7 @@ export class Hud {
     this.menu.appendChild(head);
     for (const ch of CHAPTERS) {
       const sec = el('section', 'chapter');
-      sec.appendChild(el('h2', '', `<span>${TEXT.chapter} ${ch.id}</span> ${ch.title}`));
+      sec.appendChild(el('h2', '', `<span>${TEXT.chapter} ${ch.id}</span> ${ch.title} <small>${ch.subtitle}</small>`));
       const grid = el('div', 'level-grid');
       const levels = LEVELS.filter((l) => l.chapter === ch.id);
       levels.forEach((lvl) => {
@@ -127,7 +127,9 @@ export class Hud {
     });
     const settingsBtn = el('button', 'btn ghost', `⚙ ${TEXT.buttons.settings}`);
     settingsBtn.addEventListener('click', () => this.toggleSettings());
-    row.append(controlsBtn, settingsBtn);
+    const creditsBtn = el('button', 'btn ghost', `✦ ${TEXT.buttons.credits}`);
+    creditsBtn.addEventListener('click', () => { audio.click(); this.showCredits(); });
+    row.append(controlsBtn, settingsBtn, creditsBtn);
     this.menu.append(row, help);
 
     this.menu.classList.remove('hidden');
@@ -269,7 +271,7 @@ export class Hud {
           const d = it.period ?? 2;
           const s1 = (it.wavelength ?? 532) / 1000 / d;
           const what = it.type === 'slm' ? 'SLM phase grating' : 'Diffraction grating';
-          return [what, `<code>d·sin θ = m·λ, d = ${d} µm</code><code>${nm}: first order sin θ = ${s1.toFixed(3)} → θ = ${deg(Math.asin(Math.min(1, s1)))}</code>`];
+          return [what, `<code>sin θₘ = sin θᵢ + m·λ/d, d = ${d} µm</code><code>${nm}: each order adds λ/d = ${s1.toFixed(3)} to sin θ (head-on: θ₁ = ${deg(Math.asin(Math.min(1, s1)))})</code>`];
         }
         if (it.type === 'slits') return ['Slits', '<code>pattern on the screen: Δy = λL/d (double), W = 2λL/a (single)</code>'];
         if (it.type === 'reflect') {
@@ -388,6 +390,22 @@ export class Hud {
 
   // ---------- Settings ----------
 
+  private showCredits(): void {
+    this.modal.innerHTML = `
+      <div class="modal credits">
+        <h2>${TEXT.gameTitle}</h2>
+        ${TEXT.credits.map((line) => `<p>${line}</p>`).join('')}
+        <div class="modal-actions"><button class="btn primary" data-a="close">${TEXT.buttons.close}</button></div>
+      </div>`;
+    this.modal.classList.remove('hidden');
+    this.modal.querySelector('button')!.addEventListener('click', () => { audio.click(); this.hideModal(); });
+  }
+
+  /** Larger interface text, for classroom projectors. */
+  applyLargeText(on: boolean): void {
+    this.root.classList.toggle('large', on === true);
+  }
+
   private toggleSettings(): void {
     if (!this.settingsPanel.classList.contains('hidden')) {
       this.settingsPanel.classList.add('hidden');
@@ -402,6 +420,7 @@ export class Hud {
       <label>${T.quality}<select data-s="quality">${opts}</select></label>
       <label>${T.music}<select data-s="music">${TRACKS.map((tr) => `<option value="${tr.id}" ${s.music === tr.id ? 'selected' : ''}>${tr.name}</option>`).join('')}</select></label>
       <label class="check"><input type="checkbox" data-s="unlock" ${s.unlockAll ? 'checked' : ''}> ${T.unlockAll}</label>
+      <label class="check"><input type="checkbox" data-s="large" ${s.largeText ? 'checked' : ''}> ${T.largeText}</label>
       <button class="btn danger" data-s="reset">${T.resetProgress}</button>
       <button class="btn" data-s="close">${TEXT.buttons.close}</button>`;
     this.settingsPanel.classList.remove('hidden');
@@ -411,6 +430,8 @@ export class Hud {
       this.cb.changeSettings({ music: (e.target as HTMLSelectElement).value as TrackId }));
     this.settingsPanel.querySelector('[data-s="unlock"]')!.addEventListener('change', (e) =>
       this.cb.changeSettings({ unlockAll: (e.target as HTMLInputElement).checked }));
+    this.settingsPanel.querySelector('[data-s="large"]')!.addEventListener('change', (e) =>
+      this.cb.changeSettings({ largeText: (e.target as HTMLInputElement).checked }));
     this.settingsPanel.querySelector('[data-s="reset"]')!.addEventListener('click', () => {
       if (confirm(T.confirmReset)) this.cb.resetProgress();
     });

@@ -100,6 +100,8 @@ export interface BeamSegment {
   n: number;
   /** Intensity relative to what this ray started with (for drawing fans of weak rays). */
   rel: number;
+  /** Light spreading out after slits: half-width of the visible pattern at the end of this segment. */
+  spread?: number;
 }
 
 export type InteractionType =
@@ -225,6 +227,12 @@ export function thinLens(d: Vec2, p: Vec2, s: Segment): { dir: Vec2; h: number }
   return { dir: normalize(add(axis, scale(t, slope))), h };
 }
 
+/** Half-width of the visible slit pattern at distance L (a few fringes, or the central band and its neighbours). */
+function slitSpread(p: SlitSpec, wl: number, L: number): number {
+  const unit = (wl * L) / 1000;
+  return Math.min(1.6, p.count >= 2 ? (4 * unit) / p.sep : (2 * unit) / p.width);
+}
+
 /** Directions and efficiencies of the diffraction orders leaving a transmission grating. */
 export function gratingOrders(d: Vec2, s: Segment, wavelength: number): { m: number; dir: Vec2; eff: number }[] {
   const t = normalize(sub(s.b, s.a));
@@ -340,7 +348,8 @@ export function traceScene(
 
       const p = add(o, scale(d, bestT));
       const rel = intensity / ray.start;
-      result.segments.push({ from: o, to: p, wavelength: wl, intensity, n, rel });
+      const spread = pattern ? slitSpread(pattern, wl, Math.hypot(p.x - pattern.from.x, p.y - pattern.from.y)) : undefined;
+      result.segments.push({ from: o, to: p, wavelength: wl, intensity, n, rel, spread });
 
       for (const c of scene.circles) {
         if (c.kind === 'sensor' && !sensed.has(c.ownerId) && segmentTouchesCircle(o, p, c.c, c.r)) {

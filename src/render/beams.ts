@@ -70,6 +70,28 @@ export class BeamRenderer {
     }
     for (const m of merged.values()) {
       const s = { ...m.s, intensity: m.intensity, rel: m.rel };
+      if (s.spread !== undefined) {
+        // Light spreading out after slits: a soft wedge from the slits to the screen.
+        const ax = s.to.x - s.from.x;
+        const ay = s.to.y - s.from.y;
+        const L = Math.hypot(ax, ay) || 1;
+        const px = -ay / L;
+        const py = ax / L;
+        const w0 = 0.02;
+        const w1 = s.spread;
+        const pts = [
+          [s.from.x + px * w0, s.from.y + py * w0], [s.from.x - px * w0, s.from.y - py * w0],
+          [s.to.x - px * w1, s.to.y - py * w1], [s.to.x + px * w1, s.to.y + py * w1],
+        ].map(([x, y]) => new THREE.Vector3(x, BEAM_HEIGHT, -y));
+        const geo = new THREE.BufferGeometry().setFromPoints([pts[0], pts[1], pts[2], pts[0], pts[2], pts[3]]);
+        const c = wavelengthToColor(s.wavelength);
+        const wedge = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: c.multiplyScalar(0.8), transparent: true, opacity: 0.14, side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+        }));
+        this.beams.add(wedge);
+        continue;
+      }
       const a = new THREE.Vector3(s.from.x, BEAM_HEIGHT, -s.from.y);
       const b = new THREE.Vector3(s.to.x, BEAM_HEIGHT, -s.to.y);
       const len = a.distanceTo(b);

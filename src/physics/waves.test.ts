@@ -77,7 +77,7 @@ describe('spatial light modulator', () => {
   });
 
   it('steers the beam by asin(λ/Λ) with a phase ramp (head-on), and splits it with a binary grating', () => {
-    const idx = SLM_PROGRAMS.findIndex((p) => p.name.startsWith('Ramp ↑ 3'));
+    const idx = SLM_PROGRAMS.findIndex((p) => p.name.startsWith('Ramp + 3'));
     // SLM facing the laser head-on: the flat program would send the beam straight back (180°).
     const r = run([
       { id: 'laser', kind: 'laser', x: -6, y: 0, rotation: 0 },

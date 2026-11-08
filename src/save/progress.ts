@@ -6,6 +6,8 @@ export interface Settings {
   quality: Quality;
   muted: boolean;
   unlockAll: boolean;
+  /** Bigger interface text for projectors. */
+  largeText: boolean;
   overlay: boolean;
   music: TrackId;
 }
@@ -23,7 +25,7 @@ const RENAMED: Record<string, string> = { '1-4': '2-1', '1-5': '2-2' };
 
 const defaults = (): SaveData => ({
   stars: {},
-  settings: { quality: 'medium', muted: false, unlockAll: false, overlay: false, music: 'groove' },
+  settings: { quality: 'medium', muted: false, unlockAll: false, overlay: false, music: 'groove', largeText: false },
   seenIntro: {},
 });
 
