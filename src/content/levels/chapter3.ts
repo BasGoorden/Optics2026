@@ -144,4 +144,124 @@ export const CHAPTER3: LevelDef[] = [
     solution: { place: [{ item: 'lens', x: 1.5, y: 0, rotation: 0 }] },
     bonusSolution: { place: [{ item: 'lens', x: -1.5, y: 0, rotation: 0 }] },
   },
-];
+  {
+    id: '3-5',
+    chapter: 3,
+    title: 'Right Side Up',
+    intro: [
+      'Every image so far was upside down. This screen needs the arrow the right way up.',
+      'One lens flips the image. What would two lenses do?',
+    ],
+    hints: [
+      'Let the first lens make an upside-down image somewhere in the middle of the table. The second lens images that image again.',
+      'Two flips make the image upright again. Watch the colours: blue (base) should end up at the bottom.',
+      'Each lens has f = 1.25. Put one at (−2.5, 0) and one at (2.5, 0).',
+    ],
+    explanation: {
+      title: 'Relay lenses',
+      body:
+        'The first lens forms a real, inverted image. The second lens treats that image as its object and inverts it again, '
+        + 'so the final image is upright. Periscopes, endoscopes and rifle scopes use relay lenses like this.',
+      deeper:
+        'Magnifications multiply: m = m₁·m₂. Two inverting stages give m₁ < 0 and m₂ < 0, so m > 0. With u = v = 2f for each stage, '
+        + 'm₁ = m₂ = −1 and m = +1: a life-size upright image 4f + 4f = 10 units from the object.',
+    },
+    bounds: TABLE,
+    elements: [
+      { id: 'obj', kind: 'object', x: -5, y: 0, rotation: 0, spread: 15, rays: 11, len: 0.8 },
+      { id: 'screen', kind: 'screen', x: 5, y: 0, rotation: 0, len: 2.4 },
+    ],
+    inventory: { lens: 2 },
+    templates: { lens: { focal: 1.25, len: 2.4 } },
+    images: [{ screen: 'screen', object: 'obj', maxBlur: 0.1, magnification: { min: 0.1, max: 10 } }],
+    par: 2,
+    bonus: { description: 'Make the upright image life-size (m between 0.9 and 1.1)', magnification: { min: 0.9, max: 1.1 } },
+    solution: {
+      place: [
+        { item: 'lens', x: -2.5, y: 0, rotation: 0 },
+        { item: 'lens', x: 3, y: 0, rotation: 0 },
+      ],
+    },
+    bonusSolution: {
+      place: [
+        { item: 'lens', x: -2.5, y: 0, rotation: 0 },
+        { item: 'lens', x: 2.5, y: 0, rotation: 0 },
+      ],
+    },
+  },
+  {
+    id: '3-6',
+    chapter: 3,
+    title: 'Glasses',
+    intro: [
+      'This is a model eye: a lens at the front and a retina (the screen) at the back.',
+      'The eyeball is a bit too long, so faraway things look blurry. This eye is nearsighted. Give it glasses!',
+    ],
+    hints: [
+      'The eye\'s lens focuses the image in front of the retina. You need to move the focus further back.',
+      'A diverging lens (Lens −) spreads the rays a little first, so the eye focuses them further back.',
+      'Put Lens − (f = −2) at (0, 0) or (0.5, 0), in front of the eye.',
+    ],
+    explanation: {
+      title: 'Correcting nearsightedness',
+      body:
+        'In a nearsighted (myopic) eye the image of faraway objects forms in front of the retina. A diverging lens in front of the eye '
+        + 'makes the light spread slightly, so the eye focuses it further back, right on the retina. Farsighted eyes need converging lenses instead.',
+      deeper:
+        'Opticians measure lens strength in dioptres: D = 1/f with f in metres. Diverging (negative) lenses correct myopia. '
+        + 'Two thin lenses close together act like one lens with 1/f = 1/f₁ + 1/f₂, so glasses effectively weaken the eye\'s own lens.',
+    },
+    bounds: TABLE,
+    elements: [
+      { id: 'obj', kind: 'object', x: -5, y: 0, rotation: 0, spread: 6, rays: 9 },
+      { id: 'eye', kind: 'lens', x: 2.5, y: 0, rotation: 0, focal: 1.5, len: 1.4 },
+      { id: 'retina', kind: 'screen', x: 5, y: 0, rotation: 0, len: 1.6 },
+      { id: 'w1', kind: 'wall', x: 3.85, y: 1.05, rotation: 0, w: 2.7, h: 0.2, height: 1.9 },
+      { id: 'w2', kind: 'wall', x: 3.85, y: -1.05, rotation: 0, w: 2.7, h: 0.2, height: 1.9 },
+    ],
+    inventory: { lens: 1, dlens: 1 },
+    templates: { lens: { focal: 3, len: 1.6 }, dlens: { focal: -2, len: 1.6 } },
+    images: [{ screen: 'retina', object: 'obj', maxBlur: 0.05 }],
+    par: 1,
+    bonus: { description: 'Perfect vision: blur below 0.02', maxBlur: 0.02 },
+    solution: { place: [{ item: 'dlens', x: 0.5, y: 0, rotation: 0 }] },
+    bonusSolution: { place: [{ item: 'dlens', x: 0, y: 0, rotation: 0 }] },
+  },
+  {
+    id: '3-7',
+    chapter: 3,
+    title: 'Say Cheese',
+    intro: [
+      'This box is a camera: the screen at the back is its sensor.',
+      'Put the lens inside the camera and focus it on the arrow.',
+    ],
+    hints: [
+      'A camera focuses by moving its lens closer to or further from the sensor.',
+      'The object is about 9 units away, so the image forms just beyond the focal point (f = 2).',
+      'Try the lens at (2, 0) or (2.5, 0).',
+    ],
+    explanation: {
+      title: 'How a camera focuses',
+      body:
+        'For a faraway object the image forms close to the focal point. For nearer objects it forms further behind the lens, '
+        + 'so the camera moves the lens forward to focus. Your eye can\'t move its lens, so it changes the lens\'s shape instead.',
+      deeper:
+        'From 1/f = 1/u + 1/v: as u → ∞, v → f. Here u ≈ 7, f = 2, so v = 1/(1/2 − 1/7) = 2.8. '
+        + 'Depth of field (how much stays sharp) grows when the aperture is smaller: that is the f-number on a camera.',
+    },
+    bounds: TABLE,
+    elements: [
+      { id: 'obj', kind: 'object', x: -5, y: 0, rotation: 0, spread: 8, rays: 9, len: 1.6 },
+      { id: 'sensor', kind: 'screen', x: 5, y: 0, rotation: 0, len: 1.2 },
+      { id: 'top', kind: 'wall', x: 3.7, y: 0.95, rotation: 0, w: 3.8, h: 0.3, height: 1.9 },
+      { id: 'bottom', kind: 'wall', x: 3.7, y: -0.95, rotation: 0, w: 3.8, h: 0.3, height: 1.9 },
+      { id: 'back', kind: 'wall', x: 5.45, y: 0, rotation: 0, w: 0.3, h: 1.6, height: 1.9 },
+    ],
+    inventory: { lens: 1 },
+    templates: { lens: { focal: 2, len: 1.2 } },
+    images: [{ screen: 'sensor', object: 'obj', maxBlur: 0.05 }],
+    par: 1,
+    bonus: { description: 'Razor sharp: blur below 0.04', maxBlur: 0.04 },
+    solution: { place: [{ item: 'lens', x: 2.5, y: 0, rotation: 0 }] },
+    bonusSolution: { place: [{ item: 'lens', x: 2, y: 0, rotation: 0 }] },
+  },];

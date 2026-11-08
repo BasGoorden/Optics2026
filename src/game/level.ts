@@ -12,6 +12,8 @@ export interface ImageGoal {
   object: string;
   /** Largest allowed blur (spot size on the screen, table units). */
   maxBlur: number;
+  /** Required magnification range (e.g. min > 0 for an upright image). */
+  magnification?: { min: number; max: number };
 }
 
 export interface LevelDef {
@@ -132,7 +134,9 @@ export function analyseImage(goal: ImageGoal, elements: ElementState[], trace: T
     const sign = Math.sign(dot(objUp, scrUp)) || 1;
     magnification = (sign * (tip - baseP)) / (obj.len ?? OBJECT_HEIGHT);
   }
-  return { goal, formed, blur, sharp: formed && blur <= goal.maxBlur, magnification, spots };
+  const m = goal.magnification;
+  const magOk = !m || (magnification >= m.min && magnification <= m.max);
+  return { goal, formed, blur, sharp: formed && blur <= goal.maxBlur && magOk, magnification, spots };
 }
 
 export function evaluate(level: LevelDef, elements: ElementState[]): Evaluation {
