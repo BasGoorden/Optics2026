@@ -8,7 +8,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { Bounds } from '../physics/trace';
 import { PALETTE } from './color';
 
@@ -118,6 +118,7 @@ export class Stage {
 
   /** Build the table (and its glowing frame) to fit the level bounds. */
   buildTable(b: Bounds): void {
+    this.tableGroup.traverse((o) => { if (o instanceof CSS2DObject) o.element.remove(); });
     this.tableGroup.clear();
     const w = b.maxX - b.minX;
     const d = b.maxY - b.minY;
@@ -152,6 +153,18 @@ export class Stage {
       m.position.set(x, 0.005, z);
       this.tableGroup.add(m);
     }
+    // Coordinate labels along the front and left edges (every 2 units).
+    const label = (text: string, x: number, z: number) => {
+      const div = document.createElement('div');
+      div.className = 'axis-label';
+      div.textContent = text;
+      const o = new CSS2DObject(div);
+      o.position.set(x, 0.02, z);
+      this.tableGroup.add(o);
+    };
+    for (let x = Math.ceil(b.minX / 2) * 2; x <= b.maxX; x += 2) label(String(x), x, -b.minY + 0.55);
+    for (let y = Math.ceil(b.minY / 2) * 2; y <= b.maxY; y += 2) label(String(y), b.minX - 0.6, -y);
+
     // Table legs / pedestal
     const ped = new THREE.Mesh(
       new THREE.CylinderGeometry(1.6, 2.4, 3, 6),

@@ -3,11 +3,13 @@ import { CHAPTERS, LEVELS } from '../content/levels';
 import { TEXT } from '../content/text';
 import type { PlaceableKind } from '../game/elements';
 import type { Evaluation, LevelDef } from '../game/level';
+import { fresnelReflectance } from '../physics/optics';
 import type { Interaction } from '../physics/trace';
 import { rad2deg } from '../physics/vec';
 import type { Quality } from '../render/stage';
 import type { Settings } from '../save/progress';
 import { audio } from '../audio/audio';
+import { TRACKS, TrackId } from '../audio/music';
 
 export interface HudCallbacks {
   selectLevel(id: string): void;
@@ -16,6 +18,7 @@ export interface HudCallbacks {
   hint(): void;
   topView(): void;
   toggleSound(): void;
+  cycleMusic(): void;
   reset(): void;
   pickInventory(kind: PlaceableKind): void;
   changeSettings(s: Partial<Settings>): void;
@@ -32,10 +35,12 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
 
 const ICONS: Record<string, string> = {
   mirror: '<svg viewBox="0 0 40 40"><line x1="8" y1="32" x2="32" y2="8" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><line x1="11" y1="35" x2="35" y2="11" stroke="currentColor" stroke-width="1.5" opacity=".5"/></svg>',
+  splitter: '<svg viewBox="0 0 40 40"><line x1="10" y1="30" x2="30" y2="10" stroke="currentColor" stroke-width="3" stroke-dasharray="4 3" stroke-linecap="round"/><line x1="2" y1="20" x2="38" y2="20" stroke="currentColor" stroke-width="1.5" opacity=".6"/><line x1="20" y1="20" x2="20" y2="2" stroke="currentColor" stroke-width="1.5" opacity=".6"/></svg>',
   prism: '<svg viewBox="0 0 40 40"><polygon points="8,32 8,8 32,8" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
   block: '<svg viewBox="0 0 40 40"><rect x="12" y="6" width="16" height="28" fill="none" stroke="currentColor" stroke-width="3" rx="2"/></svg>',
 };
 
+const fresnelR = (it: Interaction) => fresnelReflectance(Math.cos(it.thetaI ?? 0), it.n1 ?? 1, it.n2 ?? 1);
 const star = (on: boolean) => `<span class="star ${on ? 'on' : ''}">★</span>`;
 const deg = (r?: number) => `${rad2deg(r ?? 0).toFixed(1)}°`;
 
@@ -75,8 +80,9 @@ export class Hud {
       sec.appendChild(el('h2', '', `<span>${TEXT.chapter} ${ch.id}</span> ${ch.title}`));
       const grid = el('div', 'level-grid');
       const levels = LEVELS.filter((l) => l.chapter === ch.id);
-      levels.forEach((lvl, i) => {
-        const prev = i > 0 ? levels[i - 1] : null;
+      levels.forEach((lvl) => {
+        const gi = LEVELS.indexOf(lvl);
+        const prev = gi > 0 ? LEVELS[gi - 1] : null;
         const unlocked = unlockAll || !prev || stars(prev.id) > 0;
         const s = stars(lvl.id);
         const card = el('button', `level-card ${unlocked ? '' : 'locked'} ${s > 0 ? 'done' : ''}`);
@@ -126,7 +132,8 @@ export class Hud {
       <button class="btn toggle" data-a="overlay" title="F">∠ ${t.overlay} <kbd>F</kbd></button>
       <button class="btn" data-a="hint" title="H">💡 ${t.hint} <kbd>H</kbd></button>
       <button class="btn toggle" data-a="top" title="T">⬒ ${t.topView} <kbd>T</kbd></button>
-      <button class="btn toggle" data-a="sound" title="M">♪ ${t.sound}</button>
+      <button class="btn toggle" data-a="sound" title="M">🔊 ${t.sound}</button>
+      <button class="btn" data-a="music" title="Switch music">♫ <span class="track-name"></span></button>
       <button class="btn" data-a="reset">↺ ${t.reset}</button>
       <button class="btn" data-a="settings">⚙</button>`;
     this.top.addEventListener('click', (e) => {
@@ -138,6 +145,7 @@ export class Hud {
       if (a === 'hint') this.cb.hint();
       if (a === 'top') this.cb.topView();
       if (a === 'sound') this.cb.toggleSound();
+      if (a === 'music') this.cb.cycleMusic();
       if (a === 'reset') this.cb.reset();
       if (a === 'settings') this.toggleSettings();
     });
@@ -147,12 +155,14 @@ export class Hud {
     this.top.querySelector('[data-a="overlay"]')!.classList.toggle('active', t.overlay);
     this.top.querySelector('[data-a="sound"]')!.classList.toggle('active', t.sound);
     this.top.querySelector('[data-a="top"]')!.classList.toggle('active', t.topView);
+    const music = this.getSettings().music;
+    this.top.querySelector('.track-name')!.textContent = TRACKS.find((x) => x.id === music)?.name ?? '';
   }
 
   setGoals(level: LevelDef, ev: Evaluation): void {
     const parOk = ev.placedCount <= level.par;
     this.goals.innerHTML = `
-      <div class="goal ${ev.solved ? 'met' : ''}">${star(ev.solved)} ${TEXT.stars.solve}
+      <div class="goal ${ev.solved ? 'met' : ''}">${star(ev.solved)} ${ev.requiredTargets.length > 1 ? TEXT.stars.solveAll : TEXT.stars.solve}
         <small>${ev.litTargets.length}/${ev.requiredTargets.length}</small></div>
       <div class="goal ${ev.solved && parOk ? 'met' : ''} ${!parOk ? 'fail' : ''}">${star(ev.solved && parOk)} ${TEXT.stars.par(level.par)}</div>
       <div class="goal ${ev.bonusMet ? 'met' : ''}">${star(ev.solved && ev.bonusMet)} ${level.bonus.description}</div>`;
@@ -184,19 +194,32 @@ export class Hud {
   setPhysics(on: boolean, interactions: Interaction[]): void {
     this.physics.classList.toggle('hidden', !on);
     if (!on) return;
+    const pct = (x: number) => `${Math.round(x * 100)}%`;
     const rows = interactions
-      .filter((i) => i.type === 'reflect' || i.type === 'refract' || i.type === 'tir')
-      .slice(0, 8)
-      .map((it, idx) => {
+      .filter((i) => i.intensity >= 0.1 && (i.type === 'reflect' || i.type === 'refract' || i.type === 'tir' || i.type === 'split'))
+      .slice(0, 12)
+      .map((it): [string, string] => {
         if (it.type === 'reflect') {
-          return `<li><b>${idx + 1}. Reflection</b><code>θᵢ = θᵣ = ${deg(it.thetaI)}</code></li>`;
+          return ['Reflection', `<code>θᵢ = θᵣ = ${deg(it.thetaI)}</code>`];
+        }
+        if (it.type === 'split') {
+          return ['Beam splitter', `<code>in ${pct(it.intensity)} → ${pct(it.intensity / 2)} reflected + ${pct(it.intensity / 2)} through</code><code>θᵢ = θᵣ = ${deg(it.thetaI)}</code>`];
         }
         if (it.type === 'tir') {
           const c = Math.asin((it.n2 ?? 1) / (it.n1 ?? 1.5));
-          return `<li><b>${idx + 1}. Total internal reflection</b><code>sin θc = ${it.n2?.toFixed(2)} / ${it.n1?.toFixed(2)} → θc = ${deg(c)}</code><code>θ = ${deg(it.thetaI)} &gt; θc: all light reflects</code></li>`;
+          return ['Total internal reflection', `<code>sin θc = ${it.n2?.toFixed(2)} / ${it.n1?.toFixed(2)} → θc = ${deg(c)}</code><code>θ = ${deg(it.thetaI)} &gt; θc: all light reflects</code>`];
         }
-        return `<li><b>${idx + 1}. Refraction</b><code>${it.n1?.toFixed(2)} · sin ${deg(it.thetaI)} = ${it.n2?.toFixed(2)} · sin ${deg(it.thetaT)}</code><code>${((it.n1 ?? 1) * Math.sin(it.thetaI ?? 0)).toFixed(3)} = ${((it.n2 ?? 1) * Math.sin(it.thetaT ?? 0)).toFixed(3)}</code></li>`;
-      });
+        return [`Refraction <small>(${pct(fresnelR(it))} reflected)</small>`, `<code>${it.n1?.toFixed(2)} · sin ${deg(it.thetaI)} = ${it.n2?.toFixed(2)} · sin ${deg(it.thetaT)}</code><code>${((it.n1 ?? 1) * Math.sin(it.thetaI ?? 0)).toFixed(3)} = ${((it.n2 ?? 1) * Math.sin(it.thetaT ?? 0)).toFixed(3)}</code>`];
+      })
+      // Merge identical consecutive steps (e.g. many bounces inside a fibre).
+      .reduce<{ title: string; body: string; count: number; first: number }[]>((acc, [title, body], i) => {
+        const last = acc[acc.length - 1];
+        if (last && last.title === title && last.body === body) last.count++;
+        else acc.push({ title, body, count: 1, first: i + 1 });
+        return acc;
+      }, [])
+      .slice(0, 8)
+      .map((r) => `<li><b>${r.count > 1 ? `#${r.first}–${r.first + r.count - 1}` : `#${r.first}`} ${r.title}${r.count > 1 ? ` ×${r.count}` : ''}</b>${r.body}</li>`);
     this.physics.innerHTML = `<h3>Physics overlay</h3>${rows.length ? `<ol>${rows.join('')}</ol>` : '<p>No surfaces hit yet. Put something in the beam!</p>'}<p class="muted">Angles are measured from the normal (dashed line).</p>`;
   }
 
@@ -303,12 +326,15 @@ export class Hud {
     this.settingsPanel.innerHTML = `
       <h3>${TEXT.buttons.settings}</h3>
       <label>${T.quality}<select data-s="quality">${opts}</select></label>
+      <label>${T.music}<select data-s="music">${TRACKS.map((tr) => `<option value="${tr.id}" ${s.music === tr.id ? 'selected' : ''}>${tr.name}</option>`).join('')}</select></label>
       <label class="check"><input type="checkbox" data-s="unlock" ${s.unlockAll ? 'checked' : ''}> ${T.unlockAll}</label>
       <button class="btn danger" data-s="reset">${T.resetProgress}</button>
       <button class="btn" data-s="close">${TEXT.buttons.close}</button>`;
     this.settingsPanel.classList.remove('hidden');
-    this.settingsPanel.querySelector('select')!.addEventListener('change', (e) =>
+    this.settingsPanel.querySelector('[data-s="quality"]')!.addEventListener('change', (e) =>
       this.cb.changeSettings({ quality: (e.target as HTMLSelectElement).value as Quality }));
+    this.settingsPanel.querySelector('[data-s="music"]')!.addEventListener('change', (e) =>
+      this.cb.changeSettings({ music: (e.target as HTMLSelectElement).value as TrackId }));
     this.settingsPanel.querySelector('[data-s="unlock"]')!.addEventListener('change', (e) =>
       this.cb.changeSettings({ unlockAll: (e.target as HTMLInputElement).checked }));
     this.settingsPanel.querySelector('[data-s="reset"]')!.addEventListener('click', () => {

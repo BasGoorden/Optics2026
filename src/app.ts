@@ -1,6 +1,7 @@
 /** Game controller: ties together the session, 3D view, input, HUD and audio. */
 import * as THREE from 'three';
 import { audio } from './audio/audio';
+import { TRACKS } from './audio/music';
 import { LEVELS } from './content/levels';
 import { TEXT } from './content/text';
 import { ElementState, PlaceableKind } from './game/elements';
@@ -56,6 +57,7 @@ export class App {
     const s = progress.settings();
     this.stage.setQuality(s.quality);
     audio.setMuted(s.muted);
+    audio.setTrack(s.music);
     this.beams.overlayOn = s.overlay;
     this.stage.scene.add(this.beams.group, this.lumen.group, this.gizmo);
     this.stage.buildTable(LEVELS[0].bounds);
@@ -80,11 +82,21 @@ export class App {
       hint: () => this.hint(),
       topView: () => { this.stage.toggleTopView(); this.syncToggles(); },
       toggleSound: () => this.toggleSound(),
+      cycleMusic: () => {
+        const i = TRACKS.findIndex((t) => t.id === progress.settings().music);
+        const next = TRACKS[(i + 1) % TRACKS.length];
+        progress.updateSettings({ music: next.id });
+        audio.start();
+        audio.setTrack(next.id);
+        this.hud.toast(`♫ ${next.name}`);
+        this.syncToggles();
+      },
       reset: () => this.resetLevel(),
       pickInventory: (k) => this.startPlacing(k),
       changeSettings: (c) => {
         progress.updateSettings(c);
         if (c.quality) { this.stage.setQuality(c.quality); this.rebuildViews(); }
+        if (c.music) { audio.start(); audio.setTrack(c.music); this.syncToggles(); }
         if (c.unlockAll !== undefined && !this.session) this.showMenu();
       },
       resetProgress: () => { progress.resetAll(); this.showMenu(); },
@@ -99,6 +111,8 @@ export class App {
       if (this.hud.talking) this.lumen.talk();
     });
 
+    // Browsers only allow audio after a user gesture: start on the first click anywhere.
+    window.addEventListener('pointerdown', () => audio.start(), { capture: true });
     this.bindInput(this.stage.renderer.domElement);
     this.showMenu();
   }
@@ -240,7 +254,7 @@ export class App {
     this.gizmo.position.set(el.x, 0, -el.y);
     this.gizmo.rotation.y = deg2rad(el.rotation);
     const name = TEXT.elementNames[el.kind];
-    const parts = [`<b>${name}</b>`];
+    const parts = [`<b>${name}</b>`, `<span class="coords">(${el.x}, ${el.y})</span>`];
     if (el.rotatable) parts.push(`<span class="angle">${fmtDeg(el.rotation)}</span>`);
     if (el.kind === 'block' || el.kind === 'prism') parts.push(`n = ${typeof el.index === 'number' ? el.index.toFixed(2) : '1.50'}`);
     const tips: string[] = [];
@@ -281,6 +295,7 @@ export class App {
       this.hud.setInventory(this.session.level, (k) => this.session!.remaining(k), null);
     }
     this.placingKind = null;
+    this.updateSelectionUi();
   }
 
   private rotateSelected(delta: number): void {
@@ -429,6 +444,7 @@ export class App {
         }
       });
       canvas.style.cursor = ok ? 'copy' : 'not-allowed';
+      this.hud.setSelection(`<b>Place ${TEXT.elementNames[this.placingKind]}</b> · <span class="coords">(${x}, ${y})</span><small>click to place · Esc or right-click to cancel</small>`);
       return;
     }
 

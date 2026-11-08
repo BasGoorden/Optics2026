@@ -1,7 +1,8 @@
 /**
- * Synthesised sound effects and ambient hum (WebAudio, no asset files).
+ * Synthesised sound effects and background music (WebAudio, no asset files).
  * Audio starts on the first user gesture, as browsers require.
  */
+import { Music, TrackId } from './music';
 type Wave = OscillatorType;
 
 class AudioEngine {
@@ -33,34 +34,17 @@ class AudioEngine {
     this.sfx = ctx.createGain();
     this.sfx.gain.value = 0.5;
     this.sfx.connect(this.master);
-    this.startAmbient();
+    this.music = new Music(ctx, this.master);
+    this.music.play(this.track);
   }
 
-  private startAmbient(): void {
-    const ctx = this.ctx!;
-    const amb = ctx.createGain();
-    amb.gain.value = 0;
-    amb.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 4);
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 260;
-    filter.Q.value = 3;
-    filter.connect(amb).connect(this.master);
-    for (const [f, type, g] of [[55, 'sawtooth', 0.5], [55.4, 'sawtooth', 0.5], [82.4, 'sine', 0.8], [110.2, 'triangle', 0.25]] as const) {
-      const o = ctx.createOscillator();
-      o.type = type;
-      o.frequency.value = f;
-      const og = ctx.createGain();
-      og.gain.value = g;
-      o.connect(og).connect(filter);
-      o.start();
-    }
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.07;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 140;
-    lfo.connect(lfoGain).connect(filter.frequency);
-    lfo.start();
+  private music: Music | null = null;
+  private track: TrackId = 'groove';
+
+  /** Switch background music (works before audio has started, too). */
+  setTrack(id: TrackId): void {
+    this.track = id;
+    this.music?.play(id);
   }
 
   private tone(freq: number, dur: number, opts: { type?: Wave; vol?: number; delay?: number; slide?: number } = {}): void {

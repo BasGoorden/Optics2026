@@ -60,24 +60,27 @@ export class BeamRenderer {
       const color = wavelengthToColor(s.wavelength);
       const mid = a.clone().add(b).multiplyScalar(0.5);
       const q = new THREE.Quaternion().setFromUnitVectors(UP, b.clone().sub(a).normalize());
-      // Inside glass the beam looks a little softer.
+      // Inside glass the beam looks a little softer; weak beams are thinner and dimmer.
       const inGlass = s.n > 1.0001;
+      const k = Math.sqrt(Math.min(1, s.intensity));
+      const weak = s.intensity < 0.1;
       const core = new THREE.Mesh(
         unitCylinder,
         new THREE.MeshBasicMaterial({
-          color: color.clone().lerp(new THREE.Color(1, 1, 1), 0.45).multiplyScalar(inGlass ? 1.6 : 2.2),
-          toneMapped: false,
+          color: color.clone().lerp(new THREE.Color(1, 1, 1), 0.45).multiplyScalar((inGlass ? 1.6 : 2.2) * (weak ? 0.5 : k)),
+          toneMapped: false, transparent: weak, opacity: weak ? 0.45 : 1, depthWrite: !weak,
         }),
       );
-      core.scale.set(0.018, len, 0.018);
+      core.scale.set(0.018 * (weak ? 0.5 : 0.6 + 0.4 * k), len, 0.018 * (weak ? 0.5 : 0.6 + 0.4 * k));
       const halo = new THREE.Mesh(
         unitCylinder,
         new THREE.MeshBasicMaterial({
-          color: color.clone().multiplyScalar(1.1), transparent: true, opacity: inGlass ? 0.18 : 0.28,
+          color: color.clone().multiplyScalar(1.1), transparent: true, opacity: (inGlass ? 0.18 : 0.28) * k,
           blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
         }),
       );
-      halo.scale.set(0.06, len, 0.06);
+      halo.scale.set(0.06 * (0.5 + 0.5 * k), len, 0.06 * (0.5 + 0.5 * k));
+      if (weak) halo.visible = false;
       for (const m of [core, halo]) {
         m.position.copy(mid);
         m.quaternion.copy(q);
@@ -86,7 +89,7 @@ export class BeamRenderer {
     }
 
     for (const it of trace.interactions) {
-      if (it.type === 'escape') continue;
+      if (it.type === 'escape' || it.intensity < 0.1) continue;
       const color = it.type === 'absorb' ? new THREE.Color('#ff6040') : wavelengthToColor(trace.segments[0]?.wavelength ?? 532);
       const sp = new THREE.Sprite(
         new THREE.SpriteMaterial({
@@ -112,8 +115,11 @@ export class BeamRenderer {
     const lineMat = new THREE.LineDashedMaterial({
       color: '#ffffff', dashSize: 0.08, gapSize: 0.06, transparent: true, opacity: 0.7, toneMapped: false,
     });
+    let labelled = 0;
+    const seen = new Set<string>();
     for (const it of trace.interactions) {
-      if (!it.normal || (it.type !== 'reflect' && it.type !== 'refract' && it.type !== 'tir')) continue;
+      if (!it.normal || it.intensity < 0.1) continue;
+      if (it.type !== 'reflect' && it.type !== 'refract' && it.type !== 'tir' && it.type !== 'split') continue;
       const p = new THREE.Vector3(it.point.x, BEAM_HEIGHT + 0.01, -it.point.y);
       const nrm = new THREE.Vector3(it.normal.x, 0, -it.normal.y);
       const g = new THREE.BufferGeometry().setFromPoints([
@@ -123,6 +129,11 @@ export class BeamRenderer {
       line.computeLineDistances();
       this.overlay.add(line);
 
+      // Label only the first few surfaces (and skip repeats of the same kind) to avoid clutter.
+      const key = `${it.type}${(it.thetaI ?? 0).toFixed(2)}`;
+      if (labelled >= 4 || seen.has(key)) continue;
+      seen.add(key);
+      labelled++;
       const div = document.createElement('div');
       div.className = `phys-label phys-${it.type}`;
       div.innerHTML = labelHtml(it);
@@ -146,6 +157,7 @@ export class BeamRenderer {
 
 function labelHtml(it: Interaction): string {
   if (it.type === 'reflect') return `<b>θᵢ</b> ${fmt(it.thetaI)} <span>=</span> <b>θᵣ</b> ${fmt(it.thetaT)}`;
+  if (it.type === 'split') return `<b>50 / 50</b> θᵢ = θᵣ = ${fmt(it.thetaI)}`;
   if (it.type === 'tir') {
     const crit = it.n1 && it.n2 ? Math.asin(it.n2 / it.n1) : 0;
     return `<b>TIR</b> θ ${fmt(it.thetaI)} &gt; θc ${fmt(crit)}`;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PlaceableKind } from '../game/elements';
 import { applySolution, canPlaceAt, evaluate } from '../game/level';
 import { LEVELS } from './levels';
 
@@ -18,6 +19,20 @@ describe.each(LEVELS.map((l) => [l.id, l] as const))('level %s', (_id, level) =>
     const ev = evaluate(level, applySolution(level, level.bonusSolution));
     expect(ev.solved).toBe(true);
     expect(ev.stars).toBe(3);
+  });
+
+  it.runIf(level.par >= 2)('cannot be solved with a single element (no shortcuts)', () => {
+    for (const kind of Object.keys(level.inventory) as PlaceableKind[]) {
+      for (let x = level.bounds.minX; x <= level.bounds.maxX; x += 0.5) {
+        for (let y = level.bounds.minY; y <= level.bounds.maxY; y += 0.5) {
+          for (let rotation = -90; rotation < 180; rotation += 5) {
+            const els = [...level.elements, { id: 'p', kind, x, y, rotation, placed: true }];
+            if (!canPlaceAt(els[els.length - 1], x, y, els, level.bounds)) continue;
+            if (evaluate(level, els).solved) throw new Error(`${kind} at (${x}, ${y}) ${rotation}° solves it`);
+          }
+        }
+      }
+    }
   });
 
   it('has solutions that respect inventory and placement rules', () => {

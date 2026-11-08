@@ -75,7 +75,7 @@ describe('tracer', () => {
       const mid = vec((a.x + b.x) / 2, (a.y + b.y) / 2);
       return { a, b, kind: 'interface' as const, ownerId: 'G', normal: normalize(mid), index: 1.5 };
     });
-    const r = traceScene({ bounds, segments: segs, circles: [] }, [src(-8, 0, 0)]);
+    const r = traceScene({ bounds, segments: segs, circles: [] }, [src(-8, 0, 0)], { fresnel: false });
     const last = r.segments[r.segments.length - 1];
     const dir = normalize(vec(last.to.x - last.from.x, last.to.y - last.from.y));
     close(dir.x, 1, 1e-9);
@@ -84,6 +84,45 @@ describe('tracer', () => {
     const expected = (2 * Math.sin(deg2rad(30) - t2)) / Math.cos(t2);
     close(Math.abs(last.to.y), expected, 1e-9);
     expect(r.segments[1].n).toBe(1.5);
+  });
+
+  it('splits a beam 50/50 at a beam splitter and lights both targets', () => {
+    const scene: OpticalScene = {
+      bounds,
+      segments: [{ a: vec(4.5, -0.5), b: vec(5.5, 0.5), kind: 'splitter', ownerId: 'S', normal: normalize(vec(-1, 1)), reflectance: 0.5 }],
+      circles: [
+        { c: vec(5, 5), r: 0.3, kind: 'target', ownerId: 'up' },
+        { c: vec(9, 0), r: 0.3, kind: 'target', ownerId: 'straight' },
+      ],
+    };
+    const r = traceScene(scene, [src(0, 0, 0)]);
+    expect([...r.hitTargets].sort()).toEqual(['straight', 'up']);
+    const arrivals = r.interactions.filter((i) => i.type === 'target').map((i) => i.intensity);
+    arrivals.forEach((i) => close(i, 0.5));
+  });
+
+  it('adds a 4% Fresnel reflection at normal incidence on glass and conserves energy', () => {
+    const scene: OpticalScene = {
+      bounds,
+      segments: [{ a: vec(5, -1), b: vec(5, 1), kind: 'interface', ownerId: 'G', normal: vec(-1, 0), index: 1.5 }],
+      circles: [],
+    };
+    const r = traceScene(scene, [src(0, 0, 0)]);
+    const reflected = r.segments.find((s) => s.from.x === 5 && s.to.x < 5)!;
+    const transmitted = r.segments.find((s) => s.from.x === 5 && s.to.x > 5)!;
+    close(reflected.intensity, 0.04, 1e-12);
+    close(reflected.intensity + transmitted.intensity, 1, 1e-12);
+  });
+
+  it('does not let weak beams trigger targets', () => {
+    const scene: OpticalScene = {
+      bounds,
+      segments: [{ a: vec(5, -1), b: vec(5, 1), kind: 'interface', ownerId: 'G', normal: vec(-1, 0), index: 1.5 }],
+      circles: [{ c: vec(-5, 0), r: 0.3, kind: 'target', ownerId: 'T' }],
+    };
+    // The 4% reflection travels back towards x = -5 but is below the detection threshold.
+    const r = traceScene(scene, [src(-2, 0, 0)]);
+    expect(r.hitTargets.has('T')).toBe(false);
   });
 
   it('passes through sensors and records them', () => {

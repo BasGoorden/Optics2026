@@ -5,10 +5,10 @@
  * circles (targets that absorb, sensors that the beam passes through).
  * Glass shapes must be convex and must not overlap; outside glass is air (n = 1).
  */
-import { RefractiveIndex, indexAt, reflect, refract } from './optics';
+import { RefractiveIndex, fresnelReflectance, indexAt, reflect, refract } from './optics';
 import { Vec2, add, cross, dot, scale, sub } from './vec';
 
-export type SegmentKind = 'mirror' | 'absorber' | 'interface';
+export type SegmentKind = 'mirror' | 'absorber' | 'interface' | 'splitter';
 
 export interface Segment {
   a: Vec2;
@@ -19,6 +19,8 @@ export interface Segment {
   normal: Vec2;
   /** For 'interface': the glass material. */
   index?: RefractiveIndex;
+  /** For 'splitter': fraction reflected (default 0.5). */
+  reflectance?: number;
 }
 
 export interface Circle {
@@ -60,12 +62,14 @@ export interface BeamSegment {
   n: number;
 }
 
-export type InteractionType = 'reflect' | 'refract' | 'tir' | 'absorb' | 'target' | 'escape';
+export type InteractionType = 'reflect' | 'refract' | 'tir' | 'split' | 'absorb' | 'target' | 'escape';
 
 export interface Interaction {
   type: InteractionType;
   point: Vec2;
   ownerId: string | null;
+  /** Beam intensity arriving here (1 = full laser power). */
+  intensity: number;
   /** Unit normal on the incoming side of the surface (points against the incoming ray). */
   normal?: Vec2;
   /** Angle of incidence, radians from the normal. */
@@ -133,8 +137,27 @@ function exitDistance(o: Vec2, d: Vec2, b: Bounds): number {
 }
 
 export interface TraceOptions {
-  /** Maximum number of surface interactions per beam (stops infinite mirror loops). */
+  /** Maximum surface interactions along one ray (stops infinite mirror loops). */
   maxInteractions?: number;
+  /** Maximum beam segments in total, over all branches. */
+  maxSegments?: number;
+  /** Add weak Fresnel reflections at glass surfaces. */
+  fresnel?: boolean;
+  /** Branches weaker than this are not followed. */
+  minIntensity?: number;
+  /** Targets and sensors only count a beam at least this strong. */
+  detectThreshold?: number;
+}
+
+interface Ray {
+  o: Vec2;
+  d: Vec2;
+  /** Refractive index of the medium the ray is in. */
+  n: number;
+  intensity: number;
+  wavelength: number;
+  lastSeg: number;
+  depth: number;
 }
 
 export function traceScene(
@@ -143,6 +166,10 @@ export function traceScene(
   options: TraceOptions = {},
 ): TraceResult {
   const maxInteractions = options.maxInteractions ?? 100;
+  const maxSegments = options.maxSegments ?? 400;
+  const fresnel = options.fresnel ?? true;
+  const minIntensity = options.minIntensity ?? 0.02;
+  const detect = options.detectThreshold ?? 0.1;
   const result: TraceResult = {
     segments: [],
     interactions: [],
@@ -150,13 +177,21 @@ export function traceScene(
     hitSensors: new Set(),
   };
 
-  for (const src of sources) {
-    let o = src.origin;
-    let d = src.dir;
-    let n = 1;
-    let lastSeg = -1;
+  // Main beams first (depth-first), so the strongest paths are traced before the limit.
+  const queue: Ray[] = sources
+    .map((s) => ({ o: s.origin, d: s.dir, n: 1, intensity: s.intensity, wavelength: s.wavelength, lastSeg: -1, depth: 0 }))
+    .reverse();
 
-    for (let step = 0; step <= maxInteractions; step++) {
+  while (queue.length && result.segments.length < maxSegments) {
+    const ray = queue.pop()!;
+    let { o, d, n, intensity } = ray;
+    let lastSeg = ray.lastSeg;
+    const wl = ray.wavelength;
+    const spawn = (r: Omit<Ray, 'wavelength'>) => {
+      if (r.intensity >= minIntensity) queue.push({ ...r, wavelength: wl });
+    };
+
+    for (let step = ray.depth; step <= maxInteractions && result.segments.length < maxSegments; step++) {
       // Find the nearest thing the ray hits.
       let bestT = exitDistance(o, d, scene.bounds);
       let bestSeg = -1;
@@ -182,20 +217,22 @@ export function traceScene(
       });
 
       const p = add(o, scale(d, bestT));
-      result.segments.push({ from: o, to: p, wavelength: src.wavelength, intensity: src.intensity, n });
+      result.segments.push({ from: o, to: p, wavelength: wl, intensity, n });
 
-      for (const c of scene.circles) {
-        if (c.kind === 'sensor' && segmentTouchesCircle(o, p, c.c, c.r)) result.hitSensors.add(c.ownerId);
+      if (intensity >= detect) {
+        for (const c of scene.circles) {
+          if (c.kind === 'sensor' && segmentTouchesCircle(o, p, c.c, c.r)) result.hitSensors.add(c.ownerId);
+        }
       }
 
       if (bestCircle >= 0) {
         const c = scene.circles[bestCircle];
-        result.hitTargets.add(c.ownerId);
-        result.interactions.push({ type: 'target', point: p, ownerId: c.ownerId });
+        if (intensity >= detect) result.hitTargets.add(c.ownerId);
+        result.interactions.push({ type: 'target', point: p, ownerId: c.ownerId, intensity });
         break;
       }
       if (bestSeg < 0) {
-        result.interactions.push({ type: 'escape', point: p, ownerId: null });
+        result.interactions.push({ type: 'escape', point: p, ownerId: null, intensity });
         break;
       }
       if (step === maxInteractions) break;
@@ -205,35 +242,42 @@ export function traceScene(
       const facing = dot(d, s.normal) < 0 ? s.normal : scale(s.normal, -1);
       const cosI = Math.min(1, -dot(d, facing));
       const thetaI = Math.acos(cosI);
+      const base = { point: p, ownerId: s.ownerId, normal: facing, thetaI, intensity };
 
       if (s.kind === 'absorber') {
-        result.interactions.push({ type: 'absorb', point: p, ownerId: s.ownerId, normal: facing, thetaI });
+        result.interactions.push({ type: 'absorb', ...base });
         break;
       }
 
       if (s.kind === 'mirror') {
         d = reflect(d, facing);
-        result.interactions.push({
-          type: 'reflect', point: p, ownerId: s.ownerId, normal: facing, thetaI, thetaT: thetaI, n1: n, n2: n,
-        });
+        result.interactions.push({ type: 'reflect', ...base, thetaT: thetaI, n1: n, n2: n });
+      } else if (s.kind === 'splitter') {
+        // Thin half-silvered plate: part reflects, the rest goes straight on.
+        const R = s.reflectance ?? 0.5;
+        spawn({ o: p, d: reflect(d, facing), n, intensity: intensity * R, lastSeg: bestSeg, depth: step + 1 });
+        result.interactions.push({ type: 'split', ...base, thetaT: thetaI, n1: n, n2: n });
+        intensity *= 1 - R;
       } else {
-        const glassN = indexAt(s.index ?? 1.5, src.wavelength);
+        const glassN = indexAt(s.index ?? 1.5, wl);
         const entering = dot(d, s.normal) < 0;
         const n1 = n;
         const n2 = entering ? glassN : 1;
         const t = refract(d, facing, n1, n2);
         if (t === null) {
           d = reflect(d, facing);
-          result.interactions.push({
-            type: 'tir', point: p, ownerId: s.ownerId, normal: facing, thetaI, thetaT: thetaI, n1, n2,
-          });
+          result.interactions.push({ type: 'tir', ...base, thetaT: thetaI, n1, n2 });
         } else {
+          if (fresnel) {
+            const R = fresnelReflectance(cosI, n1, n2);
+            spawn({ o: p, d: reflect(d, facing), n: n1, intensity: intensity * R, lastSeg: bestSeg, depth: step + 1 });
+            intensity *= 1 - R;
+          }
+          result.interactions.push({
+            type: 'refract', ...base, thetaT: Math.acos(Math.min(1, -dot(t, facing))), n1, n2,
+          });
           d = t;
           n = n2;
-          result.interactions.push({
-            type: 'refract', point: p, ownerId: s.ownerId, normal: facing, thetaI,
-            thetaT: Math.acos(Math.min(1, -dot(t, facing))), n1, n2,
-          });
         }
       }
       o = p;

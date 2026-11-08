@@ -9,11 +9,12 @@ export const TEXT = {
   chapter: 'Chapter',
   inventory: {
     mirror: 'Mirror',
+    splitter: 'Splitter',
     block: 'Glass block',
     prism: 'Prism',
   } as Record<string, string>,
   elementNames: {
-    laser: 'Laser', mirror: 'Mirror', block: 'Glass block', prism: 'Glass prism', target: 'Receiver', ring: 'Bonus ring', wall: 'Wall',
+    laser: 'Laser', mirror: 'Mirror', splitter: 'Beam splitter', block: 'Glass block', prism: 'Glass prism', target: 'Receiver', ring: 'Bonus ring', wall: 'Wall',
   } as Record<string, string>,
   buttons: {
     levels: 'Levels',
@@ -31,6 +32,7 @@ export const TEXT = {
   },
   stars: {
     solve: 'Light the receiver',
+    solveAll: 'Light all receivers',
     par: (n: number) => (n === 0 ? 'Solve it' : `Use at most ${n} element${n === 1 ? '' : 's'}`),
   },
   noMoreHints: 'That\'s all my hints. You\'ve got this!',
@@ -44,11 +46,13 @@ export const TEXT = {
     ['F', 'physics overlay'],
     ['H', 'hint'],
     ['T', 'top view'],
-    ['M', 'mute'],
+    ['M', 'mute all sound'],
+    ['♫ button', 'switch music track'],
   ],
   fixedNote: 'Amber parts are bolted down: you can rotate them but not move them.',
   settings: {
     quality: 'Graphics quality',
+    music: 'Background music',
     qualityOptions: { low: 'Low (school laptops)', medium: 'Medium', high: 'High' },
     unlockAll: 'Unlock all levels (teacher mode)',
     resetProgress: 'Reset all progress',

@@ -8,10 +8,10 @@ import type { RefractiveIndex } from '../physics/optics';
 import type { BeamSource, Bounds, Circle, OpticalScene, Segment } from '../physics/trace';
 import { Vec2, add, deg2rad, fromAngle, normalize, perp, rotate, sub, vec } from '../physics/vec';
 
-export type ElementKind = 'laser' | 'mirror' | 'block' | 'prism' | 'target' | 'ring' | 'wall';
+export type ElementKind = 'laser' | 'mirror' | 'splitter' | 'block' | 'prism' | 'target' | 'ring' | 'wall';
 
 /** Kinds the player can take from the inventory. */
-export type PlaceableKind = 'mirror' | 'block' | 'prism';
+export type PlaceableKind = 'mirror' | 'splitter' | 'block' | 'prism';
 
 export interface ElementState {
   id: string;
@@ -33,11 +33,16 @@ export interface ElementState {
   index?: RefractiveIndex;
   /** Laser wavelength in nm. */
   wavelength?: number;
+  /** Wall: visual height (default 0.9). Physics is 2D, so this only changes the look. */
+  height?: number;
+  /** Splitter: fraction reflected (default 0.5). */
+  reflectance?: number;
   /** Target/ring radius. */
   r?: number;
 }
 
 export const MIRROR_LENGTH = 1.2;
+export const SPLITTER_LENGTH = 1.0;
 export const TARGET_RADIUS = 0.45;
 export const RING_RADIUS = 0.25;
 export const DEFAULT_GLASS_INDEX = 1.5;
@@ -89,7 +94,8 @@ function polygonSegments(
 
 /** Mirror end points in world coordinates. Rotation 0 = mirror lies along +x. */
 export function mirrorEnds(el: ElementState): [Vec2, Vec2] {
-  const half = rotate(vec(MIRROR_LENGTH / 2, 0), deg2rad(el.rotation));
+  const len = el.kind === 'splitter' ? SPLITTER_LENGTH : MIRROR_LENGTH;
+  const half = rotate(vec(len / 2, 0), deg2rad(el.rotation));
   return [sub(vec(el.x, el.y), half), add(vec(el.x, el.y), half)];
 }
 
@@ -122,6 +128,13 @@ export function buildOpticalScene(
         segments.push({ a, b, kind: 'mirror', ownerId: el.id, normal: normalize(perp(sub(b, a))) });
         break;
       }
+      case 'splitter': {
+        const [a, b] = mirrorEnds(el);
+        segments.push({
+          a, b, kind: 'splitter', ownerId: el.id, normal: normalize(perp(sub(b, a))), reflectance: el.reflectance ?? 0.5,
+        });
+        break;
+      }
       case 'wall':
         segments.push(...polygonSegments(elementPolygon(el)!, 'absorber', el.id));
         break;
@@ -145,7 +158,8 @@ export function buildOpticalScene(
 /** Rough footprint radius, used to stop elements being placed on top of each other. */
 export function footprint(el: ElementState): number {
   switch (el.kind) {
-    case 'mirror': return 0.35;
+    case 'mirror':
+    case 'splitter': return 0.35;
     case 'prism': return 0.55;
     case 'block':
     case 'wall': return Math.min(el.w ?? 1, el.h ?? 1) / 2;

@@ -2,7 +2,9 @@
  * 3D meshes for game elements. Each view mirrors one ElementState.
  */
 import * as THREE from 'three';
-import { ElementState, LASER_SIZE, MIRROR_LENGTH, PRISM_LOCAL, RING_RADIUS, TARGET_RADIUS } from '../game/elements';
+import {
+  ElementState, LASER_SIZE, MIRROR_LENGTH, PRISM_LOCAL, RING_RADIUS, SPLITTER_LENGTH, TARGET_RADIUS,
+} from '../game/elements';
 import { deg2rad } from '../physics/vec';
 import { BEAM_HEIGHT, PALETTE, wavelengthToColor } from './color';
 import type { Quality } from './stage';
@@ -123,6 +125,29 @@ function mirrorView(el: ElementState): ElementView {
   return makeView(el, g);
 }
 
+/** Half-silvered plate: semi-transparent glass with a violet metallic sheen. */
+function splitterView(el: ElementState): ElementView {
+  const g = new THREE.Group();
+  const fixed = !el.movable && !el.placed;
+  const plate = new THREE.Mesh(
+    new THREE.BoxGeometry(SPLITTER_LENGTH, 0.5, 0.04),
+    new THREE.MeshPhysicalMaterial({
+      color: '#d9c8ff', metalness: 0.6, roughness: 0.05, transparent: true, opacity: 0.55,
+      iridescence: 1, iridescenceIOR: 1.6, envMapIntensity: 2, depthWrite: false,
+    }),
+  );
+  plate.position.y = BEAM_HEIGHT + 0.03;
+  plate.renderOrder = 2;
+  const frameMat = glow(PALETTE.magenta, 1.4);
+  for (const x of [-1, 1]) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.56, 0.07), frameMat);
+    f.position.set((x * SPLITTER_LENGTH) / 2, BEAM_HEIGHT + 0.03, 0);
+    g.add(f);
+  }
+  g.add(plate, base(fixed ? PALETTE.amber : PALETTE.magenta, 0.22));
+  return makeView(el, g);
+}
+
 function glassView(el: ElementState, quality: Quality): ElementView {
   const g = new THREE.Group();
   const pts = el.kind === 'prism'
@@ -158,18 +183,19 @@ function wallView(el: ElementState): ElementView {
   const g = new THREE.Group();
   const w = el.w ?? 1;
   const h = el.h ?? 1;
+  const H = el.height ?? 0.9;
   const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, 0.9, h),
+    new THREE.BoxGeometry(w, H, h),
     new THREE.MeshStandardMaterial({ color: '#141824', metalness: 0.7, roughness: 0.55 }),
   );
-  m.position.y = 0.45;
+  m.position.y = H / 2;
   m.castShadow = true;
   m.receiveShadow = true;
   const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(w, 0.9, h)),
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(w, H, h)),
     new THREE.LineBasicMaterial({ color: PALETTE.red.clone().multiplyScalar(1.3), toneMapped: false }),
   );
-  edges.position.y = 0.45;
+  edges.position.y = H / 2;
   g.add(m, edges);
   return makeView(el, g);
 }
@@ -248,6 +274,7 @@ export function createElementView(el: ElementState, quality: Quality): ElementVi
   switch (el.kind) {
     case 'laser': return laserView(el);
     case 'mirror': return mirrorView(el);
+    case 'splitter': return splitterView(el);
     case 'block':
     case 'prism': return glassView(el, quality);
     case 'wall': return wallView(el);

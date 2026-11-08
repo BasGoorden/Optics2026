@@ -20,7 +20,7 @@ first, with the physics always correct and as much depth as each player wants.
 | Story | A friendly guide character (AI/robot assistant) introduces concepts and gives hints |
 | Scoring | 1–3 stars per level |
 | Progress | Saved locally in the browser (localStorage). No accounts or servers. |
-| Audio | Sound effects + subtle ambient sound, with a mute toggle |
+| Audio | Sound effects + background music: 3 cheerful generated tracks the player can switch (or turn off), plus mute |
 | First milestone | A small, polished slice: about 5 reflection/refraction levels |
 | Repo | Private GitHub repo `BasGoorden/Optics2026` |
 
@@ -34,6 +34,24 @@ first, with the physics always correct and as much depth as each player wants.
    colour filters, additive mixing.
 5. **Wave optics.** Double slit, diffraction gratings, single-slit diffraction,
    thin-film interference, polarisers and Malus's law. This chapter is the most university-level.
+
+## Element catalogue (requested by the owner, 2026-11-08)
+Besides lasers, mirrors, glass and prisms, the game should eventually include the elements below.
+
+| Element | Idea | Fits chapter |
+|---|---|---|
+| Beam splitter | Half-silvered plate: 50% reflected, 50% transmitted | 1 (done) |
+| **LEDs** | Broadband or coloured sources with a spread of angles and wavelengths (a fan of rays), unlike a laser | 3–4 |
+| **Colour filters** | Pass a band of wavelengths and absorb the rest; colour-specific receivers | 4 |
+| **Apertures** | Slits/irises that clip beams or ray fans; later a single slit gives diffraction | 3, 5 |
+| **Gratings** | Split light into diffraction orders at angles from d·sin θ = m·λ, so colours separate | 4–5 |
+| **Spatial light modulators (SLM)** | Programmable pixel element: the player "paints" a phase/deflection pattern to steer or shape the beam (a beam-steering puzzle, then holography-lite) | 5+ |
+| **Cameras / screens** | A screen shows where light lands (spot, image, or interference pattern); a camera = lens + sensor that must form a sharp image | 3, 5 |
+| **Objects to image** | An illuminated object (arrow, letter, picture) whose rays must be imaged sharply onto a screen/camera | 3 |
+
+Imaging (objects → lens → screen/camera) needs ray *fans* from points rather than single
+beams. The tracer already supports many rays, so an object can be modelled as a set of point
+sources, each emitting a fan of rays.
 
 ## Core gameplay
 - Each level is a 3D lab table on a grid. It contains fixed elements (light sources,

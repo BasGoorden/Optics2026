@@ -85,6 +85,7 @@ kbd {
   padding: 8px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--panel-border); font-size: 14px;
 }
 .selection-info .angle { font: 700 15px var(--title); color: var(--cyan); }
+.selection-info .coords { font-family: 'Consolas', monospace; color: var(--muted); }
 .selection-info small { display: block; color: var(--muted); margin-top: 3px; font-size: 12px; }
 
 /* ---------- Lumen ---------- */
@@ -122,6 +123,7 @@ kbd {
 .physics-panel code { display: block; font-family: 'Consolas', monospace; color: #bfefff; font-size: 13px; }
 .physics-panel .muted, .physics-panel p { color: var(--muted); margin: 8px 0 0; }
 
+.axis-label { font: 600 11px 'Consolas', monospace; color: rgba(120, 200, 230, 0.55); }
 .phys-label {
   font: 600 12px var(--body); color: #fff; padding: 3px 7px; border-radius: 6px; white-space: nowrap; text-align: center;
   background: rgba(5, 10, 24, 0.82); border: 1px solid rgba(255, 255, 255, 0.25);
@@ -133,7 +135,7 @@ kbd {
 
 /* ---------- Menu ---------- */
 .menu {
-  position: absolute; inset: 0; overflow: auto; padding: 6vh 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 22px;
+  position: absolute; inset: 0; overflow: auto; padding: 6vh 16px 170px; display: flex; flex-direction: column; align-items: center; gap: 22px;
   background: radial-gradient(ellipse at center, rgba(3, 5, 11, 0.35), rgba(3, 5, 11, 0.85));
 }
 .menu-head { text-align: center; }
@@ -201,7 +203,11 @@ kbd {
 @keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
 @keyframes toast { 0% { opacity: 0; } 10%, 80% { opacity: 1; } 100% { opacity: 0; } }
 
-@media (max-width: 900px) {
+.level-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@media (max-width: 1250px) {
   .topbar .btn kbd { display: none; }
+  .topbar .btn { padding: 8px 10px; }
+}
+@media (max-width: 900px) {
   .physics-panel { width: 260px; }
 }
